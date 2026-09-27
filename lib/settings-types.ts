@@ -57,6 +57,7 @@ export type Prompt = {
 export type PresetConfig = SettingItemMeta & {
     builtIn?: boolean;
     builtInVersion?: number;
+    /** 未设置（-1）时不发送该采样参数，由模型使用官方默认值 */
     temperature: number;
     top_p: number;
     top_k: number;
@@ -111,6 +112,17 @@ export type RegexConfig = SettingItemMeta & {
     rules: RegexRule[];
 };
 
+// Gemini 安全过滤阈值（原生协议专用）。值为 HarmBlockThreshold 枚举；
+// "default" 维持旧行为 BLOCK_NONE；"do_not_send" 表示该类别不发送。
+export type GeminiSafetyThreshold =
+    | "default"
+    | "do_not_send"
+    | "OFF"
+    | "BLOCK_NONE"
+    | "BLOCK_ONLY_HIGH"
+    | "BLOCK_MEDIUM_AND_ABOVE"
+    | "BLOCK_LOW_AND_ABOVE";
+
 // --- ApiConfig (migrated from api-settings.tsx) ---
 export type ApiConfig = {
     id: string;
@@ -123,6 +135,12 @@ export type ApiConfig = {
     enableImageRecognition: boolean;
     enableImageGeneration: boolean;
     preventEmptyGenerateRambling?: boolean;
+    geminiSafetyThresholds?: Partial<Record<"HARM_CATEGORY_HARASSMENT" | "HARM_CATEGORY_HATE_SPEECH" | "HARM_CATEGORY_SEXUALLY_EXPLICIT" | "HARM_CATEGORY_DANGEROUS_CONTENT", GeminiSafetyThreshold>>;
+    geminiThinkingLevel?: "minimal" | "low" | "medium" | "high";
+    /** true 时请求 includeThoughts，模型返回思维链文本；未设置视为开启 */
+    geminiIncludeThoughts?: boolean;
+    /** true 时启用 Gemini 原生联网检索（googleSearch 工具） */
+    geminiGoogleSearch?: boolean;
 };
 
 // --- VoiceApiConfig (migrated from voice-settings.tsx) ---
@@ -353,4 +371,17 @@ export type InternalCapabilityConfig = {
     mode: InternalCapabilityMode;
     createdAt: number;
     updatedAt: number;
+};
+
+/** 联网搜索能力的渠道配置（跟随 InternalCapabilityConfig 存储扩展，缺省字段向后兼容） */
+export type WebSearchCapabilitySettings = {
+    /** tavily = 官方预设渠道；custom = 自定义兼容渠道 */
+    provider: "tavily" | "custom";
+    /** Tavily API Key（provider=tavily 时使用） */
+    tavilyApiKey?: string;
+    /** 自定义渠道（provider=custom 时使用）：POST JSON 返回 { results: [{ title, url, content }] } */
+    customEndpoint?: string;
+    customApiKey?: string;
+    /** 自定义渠道的鉴权头名称，默认 Authorization */
+    customAuthHeader?: string;
 };

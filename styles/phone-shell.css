@@ -116,6 +116,17 @@
   z-index: 1;
 }
 
+/* When a modal is open, the side-button decorations paint ABOVE the modal
+   overlay (stacking quirk of the fixed overlay inside the phone workspace)
+   and show up as two gray lines poking through the sheet. Hide them for the
+   duration of the modal. */
+body:has(.modal-overlay) .phone-case::before,
+body:has(.modal-overlay) .phone-case::after,
+body:has(.modal-overlay) .phone-frame::before,
+body:has(.modal-overlay) .phone-frame::after {
+  display: none;
+}
+
 /* ── Phone screen ── */
 
 .phone-shell {

@@ -15,6 +15,7 @@ import { scopeSessionCSS } from "@/lib/css-scoper";
 import { kvGet } from "@/lib/kv-db";
 import { formatXiaohongshuShareForPrompt, type ChatSharePayload } from "@/lib/chat-share";
 import { CHAT_OPEN_SESSION_EVENT, CHAT_OPEN_ADD_CONTACT_EVENT } from "@/lib/chat-notification-events";
+import { consumeChatWidgetIntent } from "@/lib/chat-widget-intent";
 import { getMascotSettingsSnapshot } from "@/lib/mascot-settings";
 
 type TabKey = "messages" | "contacts" | "feeds" | "me";
@@ -28,7 +29,10 @@ export type PhoneChatAppProps = {
 };
 
 export const PhoneChatApp = memo(function PhoneChatApp({ onClose, initialSessionId, onSessionChange, sharePayload, onShareDone }: PhoneChatAppProps) {
-    const [activeTab, setActiveTab] = useState<TabKey>("messages");
+    // 桌面小组件跳转意图：挂载首帧消费（未挂载时点击会把意图存入 sessionStorage，
+    // 这里在初始化时读出，直接落到目标 tab，避免"先闪消息列表再跳转"）
+    const [initialWidgetView] = useState<ReturnType<typeof consumeChatWidgetIntent>>(() => consumeChatWidgetIntent());
+    const [activeTab, setActiveTab] = useState<TabKey>(initialWidgetView === "add-friend" ? "contacts" : "messages");
     const [activeSession, setActiveSession] = useState<ChatSession | null>(null);
     const [activeMascot, setActiveMascot] = useState(false);
     // Chat app-level custom CSS (affects all chat pages, lower priority than per-session CSS)
@@ -109,6 +113,10 @@ export const PhoneChatApp = memo(function PhoneChatApp({ onClose, initialSession
         window.addEventListener(CHAT_OPEN_ADD_CONTACT_EVENT, handler);
         return () => window.removeEventListener(CHAT_OPEN_ADD_CONTACT_EVENT, handler);
     }, []);
+
+    // 桌面小组件（My Space）跳转：不加 window 事件监听——MiniAppWindow 里常驻一个
+    // 隐藏聊天实例，事件会被它抢先消费；意图统一走 sessionStorage，挂载首帧消费（上方 initialWidgetView）
+    const [widgetAutoOpenAddFriend, setWidgetAutoOpenAddFriend] = useState(initialWidgetView === "add-friend");
 
     // Notify parent of session changes + cache visited session + push mascot context
     useEffect(() => {
@@ -232,6 +240,8 @@ export const PhoneChatApp = memo(function PhoneChatApp({ onClose, initialSession
                         onSelectMascot={handleSelectMascot}
                         pendingAddContactId={pendingAddContactId}
                         onPendingAddContactConsumed={() => setPendingAddContactId(null)}
+                        autoOpenAddFriend={widgetAutoOpenAddFriend}
+                        onAutoOpenAddFriendConsumed={() => setWidgetAutoOpenAddFriend(false)}
                         onPendingAddContactBack={() => {
                             const sessionId = addContactReturnSessionRef.current;
                             addContactReturnSessionRef.current = null;

@@ -836,36 +836,39 @@ export function PresetManager({ isActive = true }: { isActive?: boolean } = {}) 
                                                         <div className="flex flex-col gap-1">
                                                             <div className="flex justify-between">
                                                                 <label className="ui-slider-label">Temperature</label>
-                                                                <span className="ui-slider-value">{preset.temperature.toFixed(2)}</span>
+                                                                <span className="ui-slider-value">{preset.temperature === -1 ? "官方默认" : preset.temperature.toFixed(2)}</span>
                                                             </div>
-                                                            <input className="ui-slider" type="range" min="0" max="2" step="any" value={preset.temperature} onChange={(e) => updatePreset(preset.id, { temperature: Math.round(parseFloat(e.target.value) * 100) / 100 })} />
+                                                            <input className="ui-slider" type="range" min="0" max="2" step="any" disabled={preset.temperature === -1} value={preset.temperature === -1 ? 1 : preset.temperature} onChange={(e) => updatePreset(preset.id, { temperature: Math.round(parseFloat(e.target.value) * 100) / 100 })} />
                                                             <div className="ui-slider-hints">
                                                                 <span className="ui-slider-hint">稳定保守</span>
                                                                 <span className="ui-slider-hint">发散创造</span>
+                                                                <button type="button" className="ui-slider-hint" style={{ fontWeight: preset.temperature === -1 ? 700 : 400 }} onClick={() => updatePreset(preset.id, { temperature: preset.temperature === -1 ? 0.8 : -1 })}>{preset.temperature === -1 ? "● 官方默认" : "官方默认"}</button>
                                                             </div>
                                                         </div>
 
                                                         <div className="flex flex-col gap-1">
                                                             <div className="flex justify-between">
                                                                 <label className="ui-slider-label">Top P</label>
-                                                                <span className="ui-slider-value">{preset.top_p.toFixed(2)}</span>
+                                                                <span className="ui-slider-value">{preset.top_p === -1 ? "官方默认" : preset.top_p.toFixed(2)}</span>
                                                             </div>
-                                                            <input className="ui-slider" type="range" min="0" max="1" step="any" value={preset.top_p} onChange={(e) => updatePreset(preset.id, { top_p: Math.round(parseFloat(e.target.value) * 100) / 100 })} />
+                                                            <input className="ui-slider" type="range" min="0" max="1" step="any" disabled={preset.top_p === -1} value={preset.top_p === -1 ? 0.95 : preset.top_p} onChange={(e) => updatePreset(preset.id, { top_p: Math.round(parseFloat(e.target.value) * 100) / 100 })} />
                                                             <div className="ui-slider-hints">
                                                                 <span className="ui-slider-hint">用词精准</span>
                                                                 <span className="ui-slider-hint">词汇丰富</span>
+                                                                <button type="button" className="ui-slider-hint" style={{ fontWeight: preset.top_p === -1 ? 700 : 400 }} onClick={() => updatePreset(preset.id, { top_p: preset.top_p === -1 ? 1 : -1 })}>{preset.top_p === -1 ? "● 官方默认" : "官方默认"}</button>
                                                             </div>
                                                         </div>
 
                                                         <div className="flex flex-col gap-1">
                                                             <div className="flex justify-between">
                                                                 <label className="ui-slider-label">Top K</label>
-                                                                <span className="ui-slider-value">{preset.top_k}</span>
+                                                                <span className="ui-slider-value">{preset.top_k === -1 ? "官方默认" : preset.top_k}</span>
                                                             </div>
-                                                            <input className="ui-slider" type="range" min="0" max="100" step="1" value={preset.top_k} onChange={(e) => updatePreset(preset.id, { top_k: parseInt(e.target.value) })} />
+                                                            <input className="ui-slider" type="range" min="0" max="100" step="1" disabled={preset.top_k === -1} value={preset.top_k === -1 ? 0 : preset.top_k} onChange={(e) => updatePreset(preset.id, { top_k: parseInt(e.target.value) })} />
                                                             <div className="ui-slider-hints">
                                                                 <span className="ui-slider-hint">用词精准</span>
                                                                 <span className="ui-slider-hint">词汇丰富</span>
+                                                                <button type="button" className="ui-slider-hint" style={{ fontWeight: preset.top_k === -1 ? 700 : 400 }} onClick={() => updatePreset(preset.id, { top_k: preset.top_k === -1 ? 0 : -1 })}>{preset.top_k === -1 ? "● 官方默认" : "官方默认"}</button>
                                                             </div>
                                                         </div>
 

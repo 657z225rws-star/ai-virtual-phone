@@ -10,6 +10,7 @@ import { ContentDialog } from "@/components/ui/modal";
 import { getMascotState, activateMascot, subscribeMascot } from "@/lib/mascot-state";
 import { getMascotSettingsSnapshot, resolveMascotImageRef, subscribeMascotSettings } from "@/lib/mascot-settings";
 import { loadDIYTemplates } from "@/lib/widget-storage";
+import { setChatWidgetIntent } from "@/lib/chat-widget-intent";
 import { DIYWidgetRenderer } from "@/components/widgets/diy-widget-renderer";
 
 const DEFAULT_WHITE_IMAGE =
@@ -59,7 +60,6 @@ export function WidgetRenderer({ widget, preview, onConfigChange }: WidgetRender
           onConfigChange={onConfigChange}
         />
       </div>
-      {!preview && <span className="widget-label">widgets</span>}
     </div>
   );
 }
@@ -717,29 +717,107 @@ function ProfileCardWidget({ config, widgetId, onConfigChange, preview }: any) {
 function MySpaceWidget({ config, widgetId, onConfigChange, preview }: any) {
   const avatarUrl = typeof config?.avatarUrl === "string" ? config.avatarUrl : undefined;
   const username = typeof config?.username === "string" ? config.username : "OLD ORANGE";
+
+  const DEFAULT_TITLE = "*｡My Space｡*";
+  const DEFAULT_STATS = [
+    { num: "23876", label: "Following" },
+    { num: "4598", label: "Follower" },
+    { num: "9999+", label: "Like" },
+  ];
+  const title = typeof config?.title === "string" ? config.title : DEFAULT_TITLE;
+  const rawStats = Array.isArray(config?.stats) ? config.stats : [];
+  const stats = DEFAULT_STATS.map((def, i) => {
+    const s = rawStats[i];
+    return {
+      num: typeof s?.num === "string" ? s.num : def.num,
+      label: typeof s?.label === "string" ? s.label : def.label,
+    };
+  });
   
   const { triggerUpload, input } = useImageUpload(widgetId, "avatarUrl", onConfigChange);
   
   const [showEdit, setShowEdit] = useState(false);
+  const [editKind, setEditKind] = useState<"name" | "title" | "stat">("name");
+  const [editStatIndex, setEditStatIndex] = useState(0);
   const [editText, setEditText] = useState(username);
+  const [editTitle, setEditTitle] = useState(title);
+  const [editNum, setEditNum] = useState("");
+  const [editLabel, setEditLabel] = useState("");
 
   function handleNameClick(e: React.MouseEvent) {
     if (preview) return;
     e.stopPropagation();
+    setEditKind("name");
     setEditText(username);
     setShowEdit(true);
   }
 
+  function handleTitleClick(e: React.MouseEvent) {
+    if (preview) return;
+    e.stopPropagation();
+    setEditKind("title");
+    setEditTitle(title);
+    setShowEdit(true);
+  }
+
+  function handleStatClick(e: React.MouseEvent, index: number) {
+    if (preview) return;
+    e.stopPropagation();
+    setEditKind("stat");
+    setEditStatIndex(index);
+    setEditNum(stats[index].num);
+    setEditLabel(stats[index].label);
+    setShowEdit(true);
+  }
+
   function handleSave() {
-    onConfigChange?.(widgetId, { ...config, username: editText.trim() || "OLD ORANGE" });
+    if (editKind === "name") {
+      onConfigChange?.(widgetId, { ...config, username: editText.trim() || "OLD ORANGE" });
+    } else if (editKind === "title") {
+      // 清空 = 不显示标题
+      onConfigChange?.(widgetId, { ...config, title: editTitle.trim() });
+    } else {
+      const next = stats.map((s, i) => (
+        i === editStatIndex ? { num: editNum.trim(), label: editLabel.trim() } : s
+      ));
+      onConfigChange?.(widgetId, { ...config, stats: next });
+    }
     setShowEdit(false);
   }
 
+  // 打开聊天 App：意图写入 sessionStorage，聊天 App 挂载首帧消费。
+  // 注意不能用 window 自定义事件传意图：MiniAppWindow 里常驻一个隐藏的聊天实例，
+  // 它也监听同一事件并会抢先消费，真身永远收不到（表现为点什么都落在消息列表）。
+  function openChatWithView(view: "messages" | "add-friend") {
+    setChatWidgetIntent(view);
+    window.dispatchEvent(new CustomEvent("open-app", { detail: { appId: "chat" } }));
+  }
+
+  function handleWidgetAddFriend(e: React.MouseEvent) {
+    if (preview) return;
+    e.stopPropagation();
+    openChatWithView("add-friend");
+  }
+
+  function handleWidgetMail(e: React.MouseEvent) {
+    if (preview) return;
+    e.stopPropagation();
+    openChatWithView("messages");
+  }
+
+  const collapsed = config?.collapsed === true;
+
+  function handleWidgetMenu(e: React.MouseEvent) {
+    if (preview) return;
+    e.stopPropagation();
+    onConfigChange?.(widgetId, { ...config, collapsed: !collapsed });
+  }
+
   return (
-    <div className="wg-my-space">
+    <div className={`wg-my-space${collapsed ? " wg-ms-collapsed" : ""}`}>
       {input}
       <div className="wg-ms-top">
-        <svg viewBox="0 0 13.9 13.9" width="16" height="16" className="wg-ms-icon wg-ms-icon-user">
+        <svg viewBox="0 0 13.9 13.9" width="16" height="16" className="wg-ms-icon wg-ms-icon-user" onClick={handleWidgetAddFriend} role={preview ? undefined : "button"} aria-label="添加好友">
           <g>
             <path d="M0.6,12.8c-0.3,0-0.6-0.3-0.6-0.6c0-2.5,2.3-4.5,5.2-4.5c1,0,2,0.3,2.9,0.8C8.4,8.7,8.5,9,8.3,9.3 C8.1,9.5,7.8,9.6,7.5,9.5C6.8,9.1,6,8.9,5.2,8.9c-2.2,0-4.1,1.5-4.1,3.4C1.1,12.6,0.9,12.8,0.6,12.8z"/>
             <path d="M10.7,13.9c-0.3,0-0.6-0.3-0.6-0.6V8c0-0.3,0.3-0.6,0.6-0.6c0.3,0,0.6,0.3,0.6,0.6v5.3C11.3,13.7,11,13.9,10.7,13.9z"/>
@@ -748,13 +826,13 @@ function MySpaceWidget({ config, widgetId, onConfigChange, preview }: any) {
           </g>
         </svg>
 
-        <div className="wg-ms-title">*｡My Space｡*</div>
+        {title ? <div className="wg-ms-title" onClick={handleTitleClick} role={preview ? undefined : "button"} tabIndex={preview ? undefined : 0} style={{ cursor: preview ? undefined : "pointer" }}>{title}</div> : null}
 
         <div className="wg-ms-top-right">
-          <svg viewBox="0 0 13.2 9.8" width="16" height="12" className="wg-ms-icon wg-ms-icon-mail">
+          <svg viewBox="0 0 13.2 9.8" width="16" height="12" className="wg-ms-icon wg-ms-icon-mail" onClick={handleWidgetMail} role={preview ? undefined : "button"} aria-label="打开聊天列表">
             <path fill="var(--c-home-text)" d="M1.2,0l10.7,0c0.6,0,1.1,0.5,1.2,1.1c0.1,2.5,0,4.9,0,7.4c0,0.7-0.6,1.2-1.3,1.3H1.3C0.6,9.7,0.1,9.2,0,8.5 l0-7.2C0.1,0.6,0.6,0.1,1.2,0z M10.8,1.2H2.4l0,0c1.4,1.2,2.8,2.3,4.2,3.5L10.8,1.2z M11.9,2L7,6.1c-0.2,0.1-0.5,0.2-0.7,0L1.3,2 v6.5c0,0,0,0,0.1,0.1l10.6,0c0,0,0.1,0,0.1,0V2z"/>
           </svg>
-          <svg viewBox="0 0 14 10" width="16" height="12" className="wg-ms-icon wg-ms-icon-menu" fill="none" stroke="var(--c-home-text)" strokeWidth="1.8" strokeLinecap="round">
+          <svg viewBox="0 0 14 10" width="16" height="12" className="wg-ms-icon wg-ms-icon-menu" fill="none" stroke="var(--c-home-text)" strokeWidth="1.8" strokeLinecap="round" onClick={handleWidgetMenu} role={preview ? undefined : "button"} aria-label={collapsed ? "展开小组件" : "收起小组件"} style={collapsed ? { opacity: 0.45 } : undefined}>
             <path d="M1 1h12 M1 5h12 M1 9h12" />
           </svg>
         </div>
@@ -775,25 +853,71 @@ function MySpaceWidget({ config, widgetId, onConfigChange, preview }: any) {
       </div>
 
       <div className="wg-ms-bottom">
-        <div className="wg-ms-stat"><span className="wg-ms-stat-num">23876</span><span className="wg-ms-stat-label">Following</span></div>
-        <div className="wg-ms-stat"><span className="wg-ms-stat-num">4598</span><span className="wg-ms-stat-label">Follower</span></div>
-        <div className="wg-ms-stat"><span className="wg-ms-stat-num">9999+</span><span className="wg-ms-stat-label">Like</span></div>
+        {stats.map((s, i) => (
+          <div
+            key={i}
+            className="wg-ms-stat"
+            onClick={(e) => handleStatClick(e, i)}
+            role={preview ? undefined : "button"}
+            tabIndex={preview ? undefined : 0}
+            style={{ cursor: preview ? undefined : "pointer" }}
+          >
+            <span className="wg-ms-stat-num">{s.num || "\u00A0"}</span>
+            <span className="wg-ms-stat-label">{s.label || "\u00A0"}</span>
+          </div>
+        ))}
       </div>
 
       {showEdit && !preview && createPortal(
         <ContentDialog
-          title="修改空间昵称"
+          title={editKind === "name" ? "修改空间昵称" : editKind === "title" ? "修改标题" : "修改数据格"}
           onConfirm={handleSave}
           onCancel={() => setShowEdit(false)}
         >
-          <label style={{ fontSize: "calc(13px*var(--app-text-scale,1))", color: "var(--c-text)", marginBottom: 4, display: "block" }}>输入新昵称</label>
-          <input
-            className="ui-input"
-            value={editText}
-            onChange={(e) => setEditText(e.target.value)}
-            placeholder="OLD ORANGE"
-            style={{ width: "100%" }}
-          />
+          {editKind === "name" && (
+            <>
+              <label style={{ fontSize: "calc(13px*var(--app-text-scale,1))", color: "var(--c-text)", marginBottom: 4, display: "block" }}>输入新昵称</label>
+              <input
+                className="ui-input"
+                value={editText}
+                onChange={(e) => setEditText(e.target.value)}
+                placeholder="OLD ORANGE"
+                style={{ width: "100%" }}
+              />
+            </>
+          )}
+          {editKind === "title" && (
+            <>
+              <label style={{ fontSize: "calc(13px*var(--app-text-scale,1))", color: "var(--c-text)", marginBottom: 4, display: "block" }}>输入新标题（清空则不显示）</label>
+              <input
+                className="ui-input"
+                value={editTitle}
+                onChange={(e) => setEditTitle(e.target.value)}
+                placeholder="*｡My Space｡*"
+                style={{ width: "100%" }}
+              />
+            </>
+          )}
+          {editKind === "stat" && (
+            <>
+              <label style={{ fontSize: "calc(13px*var(--app-text-scale,1))", color: "var(--c-text)", marginBottom: 4, display: "block" }}>数字（清空则不显示）</label>
+              <input
+                className="ui-input"
+                value={editNum}
+                onChange={(e) => setEditNum(e.target.value)}
+                placeholder="23876"
+                style={{ width: "100%" }}
+              />
+              <label style={{ fontSize: "calc(13px*var(--app-text-scale,1))", color: "var(--c-text)", marginBottom: 4, display: "block", marginTop: 10 }}>标签文字（清空则不显示）</label>
+              <input
+                className="ui-input"
+                value={editLabel}
+                onChange={(e) => setEditLabel(e.target.value)}
+                placeholder="Following"
+                style={{ width: "100%" }}
+              />
+            </>
+          )}
         </ContentDialog>,
         document.querySelector(".phone-shell") ?? document.body
       )}

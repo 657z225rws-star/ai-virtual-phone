@@ -1,8 +1,11 @@
-import type { InternalCapabilityConfig } from "./settings-types";
+import type { InternalCapabilityConfig, WebSearchCapabilitySettings } from "./settings-types";
 import { kvGet, kvSet, registerKvMigration } from "./kv-db";
 
 const INTERNAL_CAPABILITIES_KEY = "ai_phone_internal_capabilities_v1";
 registerKvMigration(INTERNAL_CAPABILITIES_KEY);
+
+const WEB_SEARCH_SETTINGS_KEY = "ai_phone_web_search_settings_v1";
+registerKvMigration(WEB_SEARCH_SETTINGS_KEY);
 
 export const MEMORY_WRITE_CAPABILITY_ID = "memory_write";
 export const NOTE_WALL_CAPABILITY_ID = "note_wall_service";
@@ -12,6 +15,28 @@ export const SEND_FILE_CAPABILITY_ID = "send_file";
 export const LOCAL_DATA_LIBRARY_CAPABILITY_ID = "local_data_library";
 export const TOOLBOX_MANAGEMENT_CAPABILITY_ID = "toolbox_management";
 export const TIMED_WAKE_CAPABILITY_ID = "timed_wake";
+export const WEB_SEARCH_CAPABILITY_ID = "web_search";
+
+const WEB_SEARCH_DEFAULT_SETTINGS: WebSearchCapabilitySettings = {
+    provider: "tavily",
+    tavilyApiKey: "",
+};
+
+export function loadWebSearchSettings(): WebSearchCapabilitySettings {
+    if (typeof window === "undefined") return { ...WEB_SEARCH_DEFAULT_SETTINGS };
+    try {
+        const raw = kvGet(WEB_SEARCH_SETTINGS_KEY);
+        const parsed: Partial<WebSearchCapabilitySettings> = raw ? JSON.parse(raw) : {};
+        return { ...WEB_SEARCH_DEFAULT_SETTINGS, ...parsed };
+    } catch {
+        return { ...WEB_SEARCH_DEFAULT_SETTINGS };
+    }
+}
+
+export function saveWebSearchSettings(settings: WebSearchCapabilitySettings): void {
+    if (typeof window === "undefined") return;
+    kvSet(WEB_SEARCH_SETTINGS_KEY, JSON.stringify(settings));
+}
 
 export type InternalToolDefinition = {
     name: string;
@@ -112,7 +137,37 @@ const TIMED_WAKE_USAGE_GUIDE = [
     '[执行动作:稍后主动联系({"delayMinutes":15,"intent":"过15分钟看看对方回了没，如果还合适就轻轻找一句"})]',
 ].join("\n");
 
+const WEB_SEARCH_PARAMETER_SCHEMA = JSON.stringify({
+    type: "object",
+    properties: {
+        query: {
+            type: "string",
+            description: "搜索关键词，用简洁的搜索语句（如「2026 世博会 门票 价格」）",
+        },
+        maxResults: {
+            type: "number",
+            description: "返回结果条数，可选，默认 5，最大 10",
+        },
+    },
+    required: ["query"],
+});
+
+const WEB_SEARCH_USAGE_GUIDE = [
+    "联网搜索工具使用说明：",
+    "用途：查询互联网上的实时信息——新闻时事、天气、股价、赛事比分、软件版本、商品价格、近期事件等。",
+    "",
+    "参数：",
+    "- query (string, 必填): 搜索关键词，提炼核心信息、用搜索语句表达，不要写完整问句",
+    "- maxResults (number, 可选): 返回条数，默认 5",
+    "",
+    "规则：",
+    "- 只在需要实时/外部信息时使用，闲聊和角色扮演内容不要调用。",
+    "- 搜索结果可能包含不准确或过时的内容，引用时注意甄别；有冲突信息时优先采信权威来源。",
+    "- 回答时用自己的话总结，不要整段照抄搜索结果。",
+].join("\n");
+
 const NOTE_WALL_USAGE_GUIDE = [
+
     "以下是你获取指令的返回结果：",
     "服务：便签墙",
     "用途：公共社区便签墙相关服务。",
@@ -1222,6 +1277,15 @@ const BUILTIN_INTERNAL_CAPABILITIES: InternalCapabilityConfig[] = [
         createdAt: 0,
         updatedAt: 0,
     },
+    {
+        id: WEB_SEARCH_CAPABILITY_ID,
+        name: "联网搜索",
+        description: "当遇到实时信息、事实核对、新闻、天气、价格等需要最新资料的问题时，用搜索引擎查询并基于结果回答。",
+        enabled: false,
+        mode: "auto",
+        createdAt: 0,
+        updatedAt: 0,
+    },
 ];
 
 export function loadInternalCapabilities(): InternalCapabilityConfig[] {
@@ -1291,6 +1355,14 @@ export function getInternalCapabilityToolDefinition(capability: InternalCapabili
             description: capability.description,
             parameterSchema: SEND_FILE_PARAMETER_SCHEMA,
             usageGuide: SEND_FILE_USAGE_GUIDE,
+        };
+    }
+    if (capability.id === WEB_SEARCH_CAPABILITY_ID) {
+        return {
+            name: "联网搜索",
+            description: "搜索互联网获取实时信息。适用于：新闻时事、天气、股价、赛事比分、版本发布、价格、近期事件等需要最新资料的问题。",
+            parameterSchema: WEB_SEARCH_PARAMETER_SCHEMA,
+            usageGuide: WEB_SEARCH_USAGE_GUIDE,
         };
     }
     if (capability.id === LOCAL_DATA_LIBRARY_CAPABILITY_ID) {

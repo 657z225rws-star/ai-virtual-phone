@@ -328,6 +328,58 @@ function stringifyToolSchemaEnums(value: unknown): Record<string, unknown> {
         : {};
 }
 
+// Gemini 原生协议只接受 OpenAPI Schema 的子集；白名单之外的字段（如
+// additionalProperties、$schema、allOf）会被 Google 以 400 INVALID_ARGUMENT 拒收。
+const GEMINI_SCHEMA_ALLOWED_KEYS = new Set([
+    "type",
+    "format",
+    "description",
+    "nullable",
+    "enum",
+    "items",
+    "properties",
+    "required",
+    "minimum",
+    "maximum",
+    "minItems",
+    "maxItems",
+    "anyOf",
+    "title",
+    "default",
+]);
+
+function sanitizeGeminiToolSchema(value: unknown): unknown {
+    if (Array.isArray(value)) return value.map(sanitizeGeminiToolSchema);
+    if (!value || typeof value !== "object") return value;
+
+    const record = value as Record<string, unknown>;
+    const next: Record<string, unknown> = {};
+    for (const [key, item] of Object.entries(record)) {
+        if (!GEMINI_SCHEMA_ALLOWED_KEYS.has(key)) continue;
+        if (key === "enum" && Array.isArray(item)) {
+            next[key] = item.map((entry) => String(entry));
+            continue;
+        }
+        next[key] = sanitizeGeminiToolSchema(item);
+    }
+    // Gemini 校验 required 里列出的每个名字必须在 properties 里定义过，
+    // 否则报 "required[N]: property is not defined"。
+    const rawRequired = record.required;
+    if (Array.isArray(rawRequired)) {
+        const defined = next.properties && typeof next.properties === "object" && !Array.isArray(next.properties)
+            ? new Set(Object.keys(next.properties as Record<string, unknown>))
+            : null;
+        if (defined) {
+            const filtered = rawRequired.filter((name) => typeof name === "string" && defined.has(name));
+            if (filtered.length > 0) next.required = filtered;
+            else delete next.required;
+        } else {
+            delete next.required;
+        }
+    }
+    return next;
+}
+
 function stringifyEnumValues(value: unknown): unknown {
     if (Array.isArray(value)) return value.map(stringifyEnumValues);
     if (!value || typeof value !== "object") return value;
@@ -340,6 +392,27 @@ function stringifyEnumValues(value: unknown): unknown {
             : stringifyEnumValues(item);
     }
     return next;
+}
+
+// 组装 Gemini safetySettings：从 ApiConfig 读取每类阈值；未配置的类别
+// 维持旧行为 BLOCK_NONE；显式设为 "do_not_send" 的类别从请求里剔除，
+// 四类全部剔除时整个字段不发送（Gemini 2.5/3 默认即 OFF）。
+const GEMINI_SAFETY_CATEGORIES = [
+    "HARM_CATEGORY_HARASSMENT",
+    "HARM_CATEGORY_HATE_SPEECH",
+    "HARM_CATEGORY_SEXUALLY_EXPLICIT",
+    "HARM_CATEGORY_DANGEROUS_CONTENT",
+] as const;
+
+function buildGeminiSafetySettings(config: ApiConfig): Array<{ category: string; threshold: string }> | undefined {
+    const thresholds = config.geminiSafetyThresholds ?? {};
+    const entries: Array<{ category: string; threshold: string }> = [];
+    for (const category of GEMINI_SAFETY_CATEGORIES) {
+        const value = thresholds[category];
+        if (value === "do_not_send") continue;
+        entries.push({ category, threshold: value && value !== "default" ? value : "BLOCK_NONE" });
+    }
+    return entries.length > 0 ? entries : undefined;
 }
 
 function textFromContent(content: string | LLMContentPart[]): string {
@@ -625,31 +698,44 @@ function buildGeminiRequest(
     const { systemText, rest } = splitLeadingSystemMessages(messages);
     const headers = buildRequestHeaders(config, baseUrl);
     delete headers.Authorization;
+    // Gemini 3.x 官方建议：不要发送 temperature/topP/topK，让模型使用内部默认值
+    // （temperature 默认 1.0）。预设值为 -1 表示"不发送"；其余显式值照常透传。
+    const generationConfig: Record<string, unknown> = {
+        ...(preset?.temperature !== undefined && preset.temperature !== -1 ? { temperature: preset.temperature } : {}),
+        ...(preset?.top_p !== undefined && preset.top_p !== -1 ? { topP: preset.top_p } : {}),
+        ...(preset?.top_k && preset.top_k > 0 ? { topK: preset.top_k } : {}),
+        ...(preset?.openai_max_tokens && preset.openai_max_tokens > 0 ? { maxOutputTokens: preset.openai_max_tokens } : {}),
+        ...(preset?.frequency_penalty ? { frequencyPenalty: preset.frequency_penalty } : {}),
+        ...(preset?.presence_penalty ? { presencePenalty: preset.presence_penalty } : {}),
+    };
+    if (config.geminiThinkingLevel || config.geminiIncludeThoughts !== false) {
+        generationConfig.thinkingConfig = {
+            ...(config.geminiThinkingLevel ? { thinkingLevel: config.geminiThinkingLevel } : {}),
+            ...(config.geminiIncludeThoughts !== false ? { includeThoughts: true } : {}),
+        };
+    }
     const body: Record<string, unknown> = {
         contents: compactGeminiContents(rest),
-        generationConfig: {
-            temperature: preset?.temperature ?? 0.8,
-            topP: preset?.top_p ?? 1,
-            ...(preset?.top_k && preset.top_k > 0 ? { topK: preset.top_k } : {}),
-            ...(preset?.openai_max_tokens && preset.openai_max_tokens > 0 ? { maxOutputTokens: preset.openai_max_tokens } : {}),
-        },
-        safetySettings: [
-            { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
-            { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
-            { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
-            { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" },
-        ],
+        generationConfig,
     };
+    const safetySettings = buildGeminiSafetySettings(config);
+    if (safetySettings) body.safetySettings = safetySettings;
     if (systemText) body.systemInstruction = { parts: [{ text: systemText }] };
+    const toolsPayload: unknown[] = [];
     if (options.tools?.length) {
-        body.tools = [{
+        toolsPayload.push({
             functionDeclarations: options.tools.map((tool) => ({
                 name: tool.name,
                 description: tool.description,
-                parameters: stringifyToolSchemaEnums(tool.parameters),
+                parameters: sanitizeGeminiToolSchema(tool.parameters),
             })),
-        }];
+        });
     }
+    // Gemini 3 支持内置工具与 function calling 组合使用；联网检索直接返回带引用的正文，不产生 functionCall
+    if (config.geminiGoogleSearch) {
+        toolsPayload.push({ googleSearch: {} });
+    }
+    if (toolsPayload.length) body.tools = toolsPayload;
     const method = options.stream
         ? `streamGenerateContent?alt=sse&key=${encodeURIComponent(config.apiKey)}`
         : `generateContent?key=${encodeURIComponent(config.apiKey)}`;

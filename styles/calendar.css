@@ -752,6 +752,21 @@
   transform: scale(0.95);
 }
 
+/* ── Month Nav (展开月历后的月份切换) ── */
+.calendar-month-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 2px 2px;
+}
+
+.calendar-month-nav-label {
+  font-size: calc(13px*var(--app-text-scale,1));
+  font-weight: 600;
+  color: var(--c-calendar-text);
+  letter-spacing: 0.02em;
+}
+
 /* ── Unified Calendar Grid ── */
 .calendar-unified-grid {
   border-top: 1px solid var(--c-calendar-glass-3);

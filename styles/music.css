@@ -1871,14 +1871,14 @@
 }
 
 .music-settings-btn-primary {
-    background: var(--c-music-accent);
-    border: 1px solid var(--c-music-surface-solid);
-    color: var(--c-music-white);
-    box-shadow: 0 4px 16px var(--c-music-accent-dim);
+    background: #34a853;
+    border: 1px solid #2c8f47;
+    color: #ffffff;
+    box-shadow: 0 4px 16px rgba(52, 168, 83, 0.35);
 }
 
 .music-settings-btn-primary:active:not(:disabled) {
-    background: var(--c-music-accent);
+    background: #2c8f47;
 }
 
 .music-settings-btn-danger {

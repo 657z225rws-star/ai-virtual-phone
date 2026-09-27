@@ -185,10 +185,10 @@ export default function MusicPlayer() {
         setLiked(player.currentTrack?.liked ?? false);
     }, [player.currentTrack?.id, player.currentTrack?.liked]);
 
-    // Clear add result after 2s
+    // Clear add result: 成功 2.5s，失败留 12s（错误信息较长，方便看清/截图）
     useEffect(() => {
         if (!addResult) return;
-        const t = setTimeout(() => setAddResult(null), 2000);
+        const t = setTimeout(() => setAddResult(null), addResult.ok ? 2500 : 12000);
         return () => clearTimeout(t);
     }, [addResult]);
 

@@ -3550,3 +3550,16 @@
   align-items: center;
   justify-content: center;
 }
+
+/* My Space 收起态：只保留顶栏在原位（头像/数据区隐藏）。
+   整张卡片缩到顶栏实际高度，露出下方壁纸；网格占位格不变，桌面图标不移动 */
+.wg-ms-collapsed .wg-ms-center,
+.wg-ms-collapsed .wg-ms-bottom {
+  display: none;
+}
+.icon-grid .widget-glass:has(.wg-ms-collapsed) {
+  height: fit-content;
+}
+.widget-glass:has(.wg-ms-collapsed) .wg-my-space {
+  height: auto;
+}

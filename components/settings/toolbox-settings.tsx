@@ -28,9 +28,12 @@ import {
     LOCAL_DATA_LIBRARY_CAPABILITY_ID,
     loadInternalCapabilities,
     saveInternalCapabilities,
+    loadWebSearchSettings,
+    saveWebSearchSettings,
     MUSIC_CONTROL_CAPABILITY_ID,
     NOTE_WALL_CAPABILITY_ID,
     TOOLBOX_MANAGEMENT_CAPABILITY_ID,
+    WEB_SEARCH_CAPABILITY_ID,
 } from "@/lib/internal-capability-storage";
 import { discoverMcpTools, startMcpOAuth } from "@/lib/tool-executor";
 import { SettingsContext } from "@/components/phone-settings-app";
@@ -115,6 +118,7 @@ export function ToolboxSettings() {
     const [editCompositeId, setEditCompositeId] = useState<string | null>(null);
     const [editMcpId, setEditMcpId] = useState<string | null>(null);
     const [editInternalId, setEditInternalId] = useState<string | null>(null);
+    const [webSearchSettings, setWebSearchSettings] = useState(loadWebSearchSettings());
     const [editCustomAppToolKey, setEditCustomAppToolKey] = useState<string | null>(null);
     // Draft for new items (not yet persisted)
     const [draftRestPackage, setDraftRestPackage] = useState<RestToolPackageConfig | null>(null);
@@ -188,6 +192,11 @@ export function ToolboxSettings() {
     }
     function updateInternalCapability(id: string, updates: Partial<InternalCapabilityConfig>) {
         persistInternal(internalCapabilities.map(item => item.id === id ? { ...item, ...updates, updatedAt: Date.now() } : item));
+    }
+    function updateWebSearchSettings(updates: Partial<typeof webSearchSettings>) {
+        const next = { ...webSearchSettings, ...updates };
+        setWebSearchSettings(next);
+        saveWebSearchSettings(next);
     }
     async function updateCustomAppToolEnabled(tool: CustomAppToolEntry, enabled: boolean) {
         const now = new Date().toISOString();
@@ -808,6 +817,35 @@ export function ToolboxSettings() {
                 </div>
             </div>
 
+            {(() => {
+                const webSearchCapability = internalCapabilities.find(item => item.id === WEB_SEARCH_CAPABILITY_ID);
+                if (!webSearchCapability) return null;
+                return (
+                    <div className="ui-group-card !flex-row !items-center">
+                        <button onClick={() => setEditInternalId(webSearchCapability.id)}
+                            className="flex-1 min-w-0 bg-none border-none cursor-pointer py-2 px-0 text-left flex items-center gap-2 overflow-hidden">
+                            <div className="flex-1 flex flex-col gap-1 min-w-0">
+                                <div className="flex items-center gap-[6px] min-w-0">
+                                    <span className="menu-label truncate min-w-0">{webSearchCapability.name}</span>
+                                    <span className="ui-badge shrink-0" data-variant="success">内置</span>
+                                </div>
+                                <span className="menu-desc !mt-0 truncate">{webSearchCapability.description}</span>
+                            </div>
+                        </button>
+                        <div className="flex items-center gap-3 shrink-0">
+                            <Toggle
+                                checked={webSearchCapability.enabled && webSearchCapability.mode !== "off"}
+                                onChange={v => updateInternalCapability(webSearchCapability.id, {
+                                    enabled: v,
+                                    mode: v ? "auto" : "off",
+                                })}
+                            />
+                        </div>
+                    </div>
+                );
+            })()}
+
+
             {restTools.length === 0 && restPackages.length === 0 ? (
                 <div className="ui-empty-compact mt-2">
                     <div className="ui-icon-circle"><Wrench size={24} /></div>
@@ -1039,7 +1077,7 @@ export function ToolboxSettings() {
             </div>
 
             <div className="flex flex-col gap-2">
-                {internalCapabilities.map(item => {
+                {internalCapabilities.filter(item => item.id !== WEB_SEARCH_CAPABILITY_ID).map(item => {
                     const summary = (
                         <div className="flex-1 flex flex-col gap-1 min-w-0">
                             <div className="flex items-center gap-[6px] min-w-0">
@@ -1270,7 +1308,6 @@ export function ToolboxSettings() {
                                         onChange={e => setR({ fixedParams: { ...editRest.fixedParams, [apiKeyField]: e.target.value } })} />
                                     <span className="menu-desc ml-1">
                                         {editRest.id === "builtin_weather" && "去 weatherapi.com 免费注册获取"}
-                                        {editRest.id === "builtin_search" && "去 tavily.com 免费注册获取"}
                                     </span>
                                 </div>
                                 )}
@@ -1622,6 +1659,77 @@ export function ToolboxSettings() {
                             onCancel={() => setEditInternalId(null)}
                         >
                             <p className="menu-desc text-left leading-relaxed">{getAutoOnlyCapabilityDetail(capability.id)}</p>
+                        </ContentDialog>
+                    );
+                }
+                if (capability.id === WEB_SEARCH_CAPABILITY_ID) {
+                    return (
+                        <ContentDialog title={capability.name} confirmLabel="完成" onConfirm={() => setEditInternalId(null)} onCancel={() => setEditInternalId(null)}>
+                            <div className="flex flex-col gap-3">
+                                <span className="menu-desc">{capability.description}</span>
+                                <div className="flex flex-col gap-1">
+                                    <label className="menu-desc ml-1">执行模式</label>
+                                    <Select
+                                        value={capability.mode}
+                                        onChange={e => updateInternalCapability(capability.id, { mode: e.target.value as InternalCapabilityConfig["mode"], enabled: e.target.value !== "off" })}
+                                    >
+                                        <option value="off">关闭</option>
+                                        <option value="confirm">执行前确认</option>
+                                        <option value="auto">自动执行</option>
+                                    </Select>
+                                </div>
+                                <div className="flex flex-col gap-1">
+                                    <label className="menu-desc ml-1">搜索渠道</label>
+                                    <Select
+                                        value={webSearchSettings.provider}
+                                        onChange={e => updateWebSearchSettings({ provider: e.target.value as "tavily" | "custom" })}
+                                    >
+                                        <option value="tavily">Tavily（推荐，免费每月 1000 次）</option>
+                                        <option value="custom">自定义渠道</option>
+                                    </Select>
+                                </div>
+                                {webSearchSettings.provider === "tavily" ? (
+                                    <div className="flex flex-col gap-1">
+                                        <label className="menu-desc ml-1">Tavily API Key</label>
+                                        <Input
+                                            type="password"
+                                            value={webSearchSettings.tavilyApiKey ?? ""}
+                                            placeholder="tvly-..."
+                                            onChange={e => updateWebSearchSettings({ tavilyApiKey: e.target.value })}
+                                        />
+                                        <span className="menu-desc !text-xs opacity-70">在 app.tavily.com 注册后首页即可复制，免费无信用卡。</span>
+                                    </div>
+                                ) : (
+                                    <>
+                                        <div className="flex flex-col gap-1">
+                                            <label className="menu-desc ml-1">接口地址（POST）</label>
+                                            <Input
+                                                value={webSearchSettings.customEndpoint ?? ""}
+                                                placeholder="https://example.com/search"
+                                                onChange={e => updateWebSearchSettings({ customEndpoint: e.target.value })}
+                                            />
+                                            <span className="menu-desc !text-xs opacity-70">请求体 {"{ query, maxResults }"}，需返回 {"{ results: [{ title, url, content }] }"}。</span>
+                                        </div>
+                                        <div className="flex flex-col gap-1">
+                                            <label className="menu-desc ml-1">鉴权头名称（可选，默认 Authorization）</label>
+                                            <Input
+                                                value={webSearchSettings.customAuthHeader ?? ""}
+                                                placeholder="Authorization"
+                                                onChange={e => updateWebSearchSettings({ customAuthHeader: e.target.value })}
+                                            />
+                                        </div>
+                                        <div className="flex flex-col gap-1">
+                                            <label className="menu-desc ml-1">鉴权值（可选）</label>
+                                            <Input
+                                                type="password"
+                                                value={webSearchSettings.customApiKey ?? ""}
+                                                placeholder="Bearer sk-..."
+                                                onChange={e => updateWebSearchSettings({ customApiKey: e.target.value })}
+                                            />
+                                        </div>
+                                    </>
+                                )}
+                            </div>
                         </ContentDialog>
                     );
                 }

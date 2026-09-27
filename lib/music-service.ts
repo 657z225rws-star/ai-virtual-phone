@@ -14,7 +14,11 @@ export type MusicApiConfig = {
     baseUrl: string; // e.g. "https://your-api.vercel.app"
     enabled: boolean;
     version?: number;
+    /** standard = NeteaseCloudMusicApi 直连；sullyos = SullyOS 主 Worker 代理（POST /netease/<action>） */
+    kind?: NeteaseApiKind;
 };
+
+export type NeteaseApiKind = "standard" | "sullyos";
 
 const MUSIC_API_KEY = "ai_phone_music_api_v1";
 const NETEASE_COOKIE_KEY = "ai_phone_netease_cookie_v1";
@@ -27,7 +31,7 @@ function normalizeStoredMusicApiBaseUrl(baseUrl: string | undefined): string {
 }
 
 export function loadMusicApiConfig(): MusicApiConfig {
-    if (typeof window === "undefined") return { baseUrl: DEFAULT_NETEASE_API_BASE, enabled: true, version: MUSIC_API_CONFIG_VERSION };
+    if (typeof window === "undefined") return { baseUrl: DEFAULT_NETEASE_API_BASE, enabled: true, version: MUSIC_API_CONFIG_VERSION, kind: "standard" };
     try {
         const raw = kvGet(MUSIC_API_KEY);
         if (raw) {
@@ -36,10 +40,11 @@ export function loadMusicApiConfig(): MusicApiConfig {
                 baseUrl: normalizeStoredMusicApiBaseUrl(parsed.baseUrl),
                 enabled: true,
                 version: MUSIC_API_CONFIG_VERSION,
+                kind: parsed.kind === "sullyos" ? "sullyos" : "standard",
             };
         }
     } catch { /* ignore */ }
-    return { baseUrl: DEFAULT_NETEASE_API_BASE, enabled: true, version: MUSIC_API_CONFIG_VERSION };
+    return { baseUrl: DEFAULT_NETEASE_API_BASE, enabled: true, version: MUSIC_API_CONFIG_VERSION, kind: "standard" };
 }
 
 export function saveMusicApiConfig(config: MusicApiConfig): void {
@@ -48,6 +53,7 @@ export function saveMusicApiConfig(config: MusicApiConfig): void {
             baseUrl: normalizeStoredMusicApiBaseUrl(config.baseUrl),
             enabled: true,
             version: MUSIC_API_CONFIG_VERSION,
+            kind: config.kind === "sullyos" ? "sullyos" : "standard",
         }));
     } catch { /* ignore */ }
 }
@@ -90,6 +96,50 @@ function withNeteaseParams(url: string): string {
 }
 
 // ── Netease API Types ──
+
+/** 当前 API 模式：standard = 直连 NeteaseCloudMusicApi；sullyos = SullyOS 主 Worker 代理 */
+function neteaseApiKind(): NeteaseApiKind {
+    return loadMusicApiConfig().kind === "sullyos" ? "sullyos" : "standard";
+}
+
+/** SullyOS 主 Worker 代理协议：POST /netease/<action>，JSON body，cookie 走 X-Netease-Cookie 头。
+ *  Worker 把 action 翻译成 api-enhanced 的 GET 参数并原样透传响应 JSON。 */
+async function neteaseWorkerRequest(action: string, body: Record<string, unknown> = {}, baseUrl?: string, timeoutMs = 20000): Promise<any | null> {
+    const base = normalizeMusicApiBaseUrl(baseUrl || neteaseBase());
+    if (!base) return null;
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    const cookie = loadNeteaseCookie();
+    if (cookie) headers["X-Netease-Cookie"] = cookie;
+    try {
+        const resp = await fetch(`${base}/netease/${action}`, {
+            method: "POST",
+            headers,
+            body: JSON.stringify(body),
+            signal: AbortSignal.timeout(timeoutMs),
+        });
+        if (!resp.ok) return null;
+        return await resp.json();
+    } catch { return null; }
+}
+
+/** 带 HTTP 状态的 SullyOS Worker 请求（诊断用）：status 404=action 未放行，502=上游故障，null=网络不通 */
+async function neteaseWorkerRequestVerbose(action: string, body: Record<string, unknown> = {}, baseUrl?: string, timeoutMs = 20000): Promise<{ status: number | null; data: any }> {
+    const base = normalizeMusicApiBaseUrl(baseUrl || neteaseBase());
+    if (!base) return { status: null, data: null };
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    const cookie = loadNeteaseCookie();
+    if (cookie) headers["X-Netease-Cookie"] = cookie;
+    try {
+        const resp = await fetch(`${base}/netease/${action}`, {
+            method: "POST",
+            headers,
+            body: JSON.stringify(body),
+            signal: AbortSignal.timeout(timeoutMs),
+        });
+        const data = await resp.json().catch(() => null);
+        return { status: resp.status, data };
+    } catch { return { status: null, data: null }; }
+}
 
 export type NeteaseSearchResult = {
     id: number;
@@ -168,8 +218,13 @@ export async function searchNetease(query: string, limit = 20): Promise<NeteaseS
     const base = neteaseBase();
     if (!base) return [];
     try {
-        const resp = await fetch(withNeteaseParams(`${base}/cloudsearch?keywords=${encodeURIComponent(query)}&limit=${limit}`));
-        const data = await resp.json();
+        let data: any;
+        if (neteaseApiKind() === "sullyos") {
+            data = await neteaseWorkerRequest("search", { keyword: query, limit });
+        } else {
+            const resp = await fetch(withNeteaseParams(`${base}/cloudsearch?keywords=${encodeURIComponent(query)}&limit=${limit}`));
+            data = await resp.json();
+        }
         const songs = data?.result?.songs;
         if (!Array.isArray(songs)) return [];
         return songs.map(mapSongToSearchResult);
@@ -184,8 +239,13 @@ export async function getNeteasePlayUrl(songId: number): Promise<string | null> 
     const base = neteaseBase();
     if (!base) return null;
     try {
-        const resp = await fetch(withNeteaseParams(`${base}/song/url?id=${songId}`));
-        const data = await resp.json();
+        let data: any;
+        if (neteaseApiKind() === "sullyos") {
+            data = await neteaseWorkerRequest("song/url", { id: songId });
+        } else {
+            const resp = await fetch(withNeteaseParams(`${base}/song/url?id=${songId}`));
+            data = await resp.json();
+        }
         const url = data?.data?.[0]?.url;
         if (!url || typeof url !== "string") return null;
         // Netease returns http:// CDN links; on an HTTPS page the browser blocks
@@ -202,8 +262,13 @@ export async function getNeteaseLyrics(songId: number): Promise<string> {
     const base = neteaseBase();
     if (!base) return "";
     try {
-        const resp = await fetch(withNeteaseParams(`${base}/lyric?id=${songId}`));
-        const data = await resp.json();
+        let data: any;
+        if (neteaseApiKind() === "sullyos") {
+            data = await neteaseWorkerRequest("lyric", { id: songId });
+        } else {
+            const resp = await fetch(withNeteaseParams(`${base}/lyric?id=${songId}`));
+            data = await resp.json();
+        }
         return data?.lrc?.lyric || "";
     } catch {
         return "";
@@ -215,8 +280,13 @@ export async function getNeteaseSongDetail(songId: number): Promise<{ coverUrl?:
     const base = neteaseBase();
     if (!base) return null;
     try {
-        const resp = await fetch(withNeteaseParams(`${base}/song/detail?ids=${songId}`));
-        const data = await resp.json();
+        let data: any;
+        if (neteaseApiKind() === "sullyos") {
+            data = await neteaseWorkerRequest("song/detail", { ids: songId });
+        } else {
+            const resp = await fetch(withNeteaseParams(`${base}/song/detail?ids=${songId}`));
+            data = await resp.json();
+        }
         const song = data?.songs?.[0];
         if (!song) return null;
         return {
@@ -234,8 +304,13 @@ export async function getNeteaseSongDetail(songId: number): Promise<{ coverUrl?:
 export async function getQrKey(baseUrl: string): Promise<string | null> {
     try {
         const url = resolveNeteaseRequestBase(baseUrl);
-        const resp = await fetch(withNeteaseParams(`${url}/login/qr/key?timestamp=${Date.now()}`));
-        const data = await resp.json();
+        let data: any;
+        if (neteaseApiKind() === "sullyos") {
+            data = await neteaseWorkerRequest("login/qr/key", {}, baseUrl);
+        } else {
+            const resp = await fetch(withNeteaseParams(`${url}/login/qr/key?timestamp=${Date.now()}`));
+            data = await resp.json();
+        }
         return data?.data?.unikey || null;
     } catch { return null; }
 }
@@ -243,8 +318,13 @@ export async function getQrKey(baseUrl: string): Promise<string | null> {
 export async function getQrImage(baseUrl: string, key: string): Promise<string | null> {
     try {
         const url = resolveNeteaseRequestBase(baseUrl);
-        const resp = await fetch(withNeteaseParams(`${url}/login/qr/create?key=${key}&qrimg=true&timestamp=${Date.now()}`));
-        const data = await resp.json();
+        let data: any;
+        if (neteaseApiKind() === "sullyos") {
+            data = await neteaseWorkerRequest("login/qr/create", { key, qrimg: true }, baseUrl);
+        } else {
+            const resp = await fetch(withNeteaseParams(`${url}/login/qr/create?key=${key}&qrimg=true&timestamp=${Date.now()}`));
+            data = await resp.json();
+        }
         return data?.data?.qrimg || null;
     } catch { return null; }
 }
@@ -253,8 +333,13 @@ export async function getQrImage(baseUrl: string, key: string): Promise<string |
 export async function checkQrStatus(baseUrl: string, key: string): Promise<{ code: number; message: string; nickname?: string; cookie?: string }> {
     try {
         const url = resolveNeteaseRequestBase(baseUrl);
-        const resp = await fetch(withNeteaseParams(`${url}/login/qr/check?key=${key}&timestamp=${Date.now()}`));
-        const data = await resp.json();
+        let data: any;
+        if (neteaseApiKind() === "sullyos") {
+            data = await neteaseWorkerRequest("login/qr/check", { key }, baseUrl);
+        } else {
+            const resp = await fetch(withNeteaseParams(`${url}/login/qr/check?key=${key}&timestamp=${Date.now()}`));
+            data = await resp.json();
+        }
         return { code: data?.code || 0, message: data?.message || "", nickname: data?.profile?.nickname, cookie: data?.cookie };
     } catch (e) {
         return { code: 0, message: e instanceof Error ? e.message : "检查失败" };
@@ -265,8 +350,13 @@ export async function checkQrStatus(baseUrl: string, key: string): Promise<{ cod
 export async function checkLoginStatus(baseUrl: string): Promise<{ loggedIn: boolean; nickname?: string }> {
     try {
         const url = resolveNeteaseRequestBase(baseUrl);
-        const resp = await fetch(withNeteaseParams(`${url}/login/status?timestamp=${Date.now()}`));
-        const data = await resp.json();
+        let data: any;
+        if (neteaseApiKind() === "sullyos") {
+            data = await neteaseWorkerRequest("login/status", {}, baseUrl);
+        } else {
+            const resp = await fetch(withNeteaseParams(`${url}/login/status?timestamp=${Date.now()}`));
+            data = await resp.json();
+        }
         const profile = data?.data?.profile;
         if (profile?.nickname) return { loggedIn: true, nickname: profile.nickname };
         return { loggedIn: false };
@@ -288,8 +378,13 @@ async function getLoginUid(): Promise<number | null> {
     const base = neteaseBase();
     if (!base) return null;
     try {
-        const resp = await fetch(withNeteaseParams(`${base}/login/status?timestamp=${Date.now()}`));
-        const data = await resp.json();
+        let data: any;
+        if (neteaseApiKind() === "sullyos") {
+            data = await neteaseWorkerRequest("login/status", {});
+        } else {
+            const resp = await fetch(withNeteaseParams(`${base}/login/status?timestamp=${Date.now()}`));
+            data = await resp.json();
+        }
         return data?.data?.profile?.userId || null;
     } catch { return null; }
 }
@@ -301,8 +396,13 @@ export async function getUserPlaylists(): Promise<NeteasePlaylist[]> {
     const uid = await getLoginUid();
     if (!uid) return [];
     try {
-        const resp = await fetch(withNeteaseParams(`${base}/user/playlist?uid=${uid}&timestamp=${Date.now()}`));
-        const data = await resp.json();
+        let data: any;
+        if (neteaseApiKind() === "sullyos") {
+            data = await neteaseWorkerRequest("user/playlist", { uid });
+        } else {
+            const resp = await fetch(withNeteaseParams(`${base}/user/playlist?uid=${uid}&timestamp=${Date.now()}`));
+            data = await resp.json();
+        }
         return (data?.playlist || []).map((p: any) => ({
             id: p.id,
             name: p.name,
@@ -318,8 +418,13 @@ export async function getPlaylistTracks(playlistId: number): Promise<NeteaseSear
     const base = neteaseBase();
     if (!base) return [];
     try {
-        const resp = await fetch(withNeteaseParams(`${base}/playlist/track/all?id=${playlistId}&timestamp=${Date.now()}`));
-        const data = await resp.json();
+        let data: any;
+        if (neteaseApiKind() === "sullyos") {
+            data = await neteaseWorkerRequest("playlist/track/all", { id: playlistId });
+        } else {
+            const resp = await fetch(withNeteaseParams(`${base}/playlist/track/all?id=${playlistId}&timestamp=${Date.now()}`));
+            data = await resp.json();
+        }
         return (data?.songs || []).map(mapSongToSearchResult);
     } catch { return []; }
 }
@@ -328,8 +433,13 @@ export async function getDailyRecommendSongs(): Promise<NeteaseSearchResult[]> {
     const base = neteaseBase();
     if (!base) return [];
     try {
-        const resp = await fetch(withNeteaseParams(`${base}/recommend/songs?timestamp=${Date.now()}`));
-        const data = await resp.json();
+        let data: any;
+        if (neteaseApiKind() === "sullyos") {
+            data = await neteaseWorkerRequest("recommend/songs");
+        } else {
+            const resp = await fetch(withNeteaseParams(`${base}/recommend/songs?timestamp=${Date.now()}`));
+            data = await resp.json();
+        }
         const songs = data?.data?.dailySongs || data?.recommend || [];
         return Array.isArray(songs) ? songs.map(mapSongToSearchResult) : [];
     } catch { return []; }
@@ -339,8 +449,13 @@ export async function getPersonalFm(): Promise<NeteaseSearchResult[]> {
     const base = neteaseBase();
     if (!base) return [];
     try {
-        const resp = await fetch(withNeteaseParams(`${base}/personal_fm?timestamp=${Date.now()}`));
-        const data = await resp.json();
+        let data: any;
+        if (neteaseApiKind() === "sullyos") {
+            data = await neteaseWorkerRequest("personal_fm");
+        } else {
+            const resp = await fetch(withNeteaseParams(`${base}/personal_fm?timestamp=${Date.now()}`));
+            data = await resp.json();
+        }
         const songs = data?.data || [];
         return Array.isArray(songs) ? songs.map(mapSongToSearchResult) : [];
     } catch { return []; }
@@ -350,8 +465,13 @@ export async function getPersonalizedPlaylists(limit = 12): Promise<NeteasePlayl
     const base = neteaseBase();
     if (!base) return [];
     try {
-        const resp = await fetch(withNeteaseParams(`${base}/personalized?limit=${limit}&timestamp=${Date.now()}`));
-        const data = await resp.json();
+        let data: any;
+        if (neteaseApiKind() === "sullyos") {
+            data = await neteaseWorkerRequest("personalized", { limit });
+        } else {
+            const resp = await fetch(withNeteaseParams(`${base}/personalized?limit=${limit}&timestamp=${Date.now()}`));
+            data = await resp.json();
+        }
         return (data?.result || []).map((p: any) => ({
             id: p.id,
             name: p.name,
@@ -366,8 +486,13 @@ export async function getRecommendResource(): Promise<NeteasePlaylist[]> {
     const base = neteaseBase();
     if (!base) return [];
     try {
-        const resp = await fetch(withNeteaseParams(`${base}/recommend/resource?timestamp=${Date.now()}`));
-        const data = await resp.json();
+        let data: any;
+        if (neteaseApiKind() === "sullyos") {
+            data = await neteaseWorkerRequest("recommend/resource");
+        } else {
+            const resp = await fetch(withNeteaseParams(`${base}/recommend/resource?timestamp=${Date.now()}`));
+            data = await resp.json();
+        }
         return (data?.recommend || []).map((p: any) => ({
             id: p.id,
             name: p.name,
@@ -382,8 +507,13 @@ export async function getHotSearchDetail(): Promise<NeteaseHotSearch[]> {
     const base = neteaseBase();
     if (!base) return [];
     try {
-        const resp = await fetch(withNeteaseParams(`${base}/search/hot/detail?timestamp=${Date.now()}`));
-        const data = await resp.json();
+        let data: any;
+        if (neteaseApiKind() === "sullyos") {
+            data = await neteaseWorkerRequest("search/hot/detail");
+        } else {
+            const resp = await fetch(withNeteaseParams(`${base}/search/hot/detail?timestamp=${Date.now()}`));
+            data = await resp.json();
+        }
         return (data?.data || []).map((item: any) => ({
             keyword: item.searchWord || item.keyword || "",
             score: item.score,
@@ -397,8 +527,13 @@ export async function getToplists(): Promise<NeteaseToplist[]> {
     const base = neteaseBase();
     if (!base) return [];
     try {
-        const resp = await fetch(withNeteaseParams(`${base}/toplist/detail?timestamp=${Date.now()}`));
-        const data = await resp.json();
+        let data: any;
+        if (neteaseApiKind() === "sullyos") {
+            data = await neteaseWorkerRequest("toplist/detail");
+        } else {
+            const resp = await fetch(withNeteaseParams(`${base}/toplist/detail?timestamp=${Date.now()}`));
+            data = await resp.json();
+        }
         return (data?.list || []).map((p: any) => ({
             id: p.id,
             name: p.name,
@@ -418,8 +553,13 @@ export async function getPlaylistDetail(playlistId: number): Promise<NeteasePlay
     const base = neteaseBase();
     if (!base) return null;
     try {
-        const resp = await fetch(withNeteaseParams(`${base}/playlist/detail?id=${playlistId}&timestamp=${Date.now()}`));
-        const data = await resp.json();
+        let data: any;
+        if (neteaseApiKind() === "sullyos") {
+            data = await neteaseWorkerRequest("playlist/detail", { id: playlistId });
+        } else {
+            const resp = await fetch(withNeteaseParams(`${base}/playlist/detail?id=${playlistId}&timestamp=${Date.now()}`));
+            data = await resp.json();
+        }
         const p = data?.playlist;
         if (!p) return null;
         return {
@@ -442,8 +582,13 @@ export async function getSongComments(songId: number, limit = 20): Promise<Netea
     const base = neteaseBase();
     if (!base) return [];
     try {
-        const resp = await fetch(withNeteaseParams(`${base}/comment/music?id=${songId}&limit=${limit}&timestamp=${Date.now()}`));
-        const data = await resp.json();
+        let data: any;
+        if (neteaseApiKind() === "sullyos") {
+            data = await neteaseWorkerRequest("comment/music", { id: songId, limit });
+        } else {
+            const resp = await fetch(withNeteaseParams(`${base}/comment/music?id=${songId}&limit=${limit}&timestamp=${Date.now()}`));
+            data = await resp.json();
+        }
         const comments = data?.hotComments?.length ? data.hotComments : data?.comments || [];
         return comments.map((c: any) => ({
             id: c.commentId,
@@ -462,8 +607,13 @@ export async function getUserRecord(type: 0 | 1 = 1): Promise<NeteaseSearchResul
     const uid = await getLoginUid();
     if (!uid) return [];
     try {
-        const resp = await fetch(withNeteaseParams(`${base}/user/record?uid=${uid}&type=${type}&timestamp=${Date.now()}`));
-        const data = await resp.json();
+        let data: any;
+        if (neteaseApiKind() === "sullyos") {
+            data = await neteaseWorkerRequest("user/record", { uid, type });
+        } else {
+            const resp = await fetch(withNeteaseParams(`${base}/user/record?uid=${uid}&type=${type}&timestamp=${Date.now()}`));
+            data = await resp.json();
+        }
         const records = data?.weekData || data?.allData || [];
         return Array.isArray(records) ? records.map((r: any) => mapSongToSearchResult(r.song)).filter((s: NeteaseSearchResult) => s.id) : [];
     } catch { return []; }
@@ -509,6 +659,17 @@ export function getTrackPlaylistId(trackId: number): number | null {
 export async function addTracksToPlaylist(playlistId: number, trackIds: number[]): Promise<{ ok: boolean; message: string }> {
     const base = neteaseBase();
     if (!base) return { ok: false, message: "API 未配置" };
+    if (neteaseApiKind() === "sullyos") {
+        // SullyOS Worker：POST /netease/playlist/tracks {op,pid,tracks}，Worker 通用透传转成上游 GET 参数
+        const { status, data } = await neteaseWorkerRequestVerbose("playlist/tracks", { op: "add", pid: playlistId, tracks: trackIds });
+        if (data?.body?.code === 200 || data?.status === 200 || data?.code === 200) return { ok: true, message: "已添加到歌单" };
+        if (data?.body?.code === 502) return { ok: false, message: "歌曲已在歌单中" };
+        if (data?.code === 301 || data?.body?.code === 301) return { ok: false, message: "需要先扫码登录网易云账号" };
+        if (status === 404) return { ok: false, message: "Worker 白名单未生效：playlist/tracks 不在名单里，检查 Cloudflare 里是否点了「部署」" };
+        if (status === 502) return { ok: false, message: "Worker 上游服务出错，稍后再试" };
+        if (status === null) return { ok: false, message: "连不上 Worker（网络问题，梯子是否开启）" };
+        return { ok: false, message: data?.body?.message || data?.message || `添加失败（HTTP ${status}）` };
+    }
     try {
         const resp = await fetch(withNeteaseParams(`${base}/playlist/tracks?op=add&pid=${playlistId}&tracks=${trackIds.join(",")}&timestamp=${Date.now()}`));
         const data = await resp.json();
@@ -528,6 +689,15 @@ export async function addTracksToPlaylist(playlistId: number, trackIds: number[]
 export async function removeTracksFromPlaylist(playlistId: number, trackIds: number[]): Promise<{ ok: boolean; message: string }> {
     const base = neteaseBase();
     if (!base) return { ok: false, message: "API 未配置" };
+    if (neteaseApiKind() === "sullyos") {
+        const { status, data } = await neteaseWorkerRequestVerbose("playlist/tracks", { op: "del", pid: playlistId, tracks: trackIds });
+        if (data?.body?.code === 200 || data?.status === 200 || data?.code === 200) return { ok: true, message: "已从歌单移除" };
+        if (data?.code === 301 || data?.body?.code === 301) return { ok: false, message: "需要先扫码登录网易云账号" };
+        if (status === 404) return { ok: false, message: "Worker 白名单未生效：playlist/tracks 不在名单里，检查 Cloudflare 里是否点了「部署」" };
+        if (status === 502) return { ok: false, message: "Worker 上游服务出错，稍后再试" };
+        if (status === null) return { ok: false, message: "连不上 Worker（网络问题，梯子是否开启）" };
+        return { ok: false, message: data?.body?.message || data?.message || `移除失败（HTTP ${status}）` };
+    }
     try {
         const resp = await fetch(withNeteaseParams(`${base}/playlist/tracks?op=del&pid=${playlistId}&tracks=${trackIds.join(",")}&timestamp=${Date.now()}`));
         const data = await resp.json();
@@ -540,16 +710,46 @@ export async function removeTracksFromPlaylist(playlistId: number, trackIds: num
     }
 }
 
-/** Test Netease API connection */
-export async function testNeteaseConnection(baseUrl: string): Promise<{ ok: boolean; message: string }> {
+export type NeteaseConnectionTestResult = { ok: boolean; message: string; kind?: NeteaseApiKind };
+
+/** 探测 SullyOS 主 Worker 协议：POST /netease/search {keyword} */
+async function probeSullyosWorker(url: string): Promise<NeteaseConnectionTestResult | null> {
     try {
-        const url = resolveNeteaseRequestBase(baseUrl);
+        const resp = await fetch(`${url}/netease/search`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ keyword: "test", limit: 1 }),
+            signal: AbortSignal.timeout(20000),
+        });
+        if (!resp.ok) return null;
+        const data = await resp.json().catch(() => null);
+        if (data?.result?.songs) {
+            return { ok: true, kind: "sullyos", message: "连接成功（SullyOS Worker 代理模式）" };
+        }
+        return null;
+    } catch { return null; }
+}
+
+/** Test Netease API connection */
+export async function testNeteaseConnection(baseUrl: string): Promise<NeteaseConnectionTestResult> {
+    const url = resolveNeteaseRequestBase(baseUrl);
+    try {
         const resp = await fetch(withNeteaseParams(`${url}/search?keywords=test&limit=1`), { signal: AbortSignal.timeout(20000) });
-        if (!resp.ok) return { ok: false, message: `HTTP ${resp.status}` };
-        const data = await resp.json();
-        if (data?.result?.songs) return { ok: true, message: "连接成功" };
-        return { ok: false, message: "返回格式异常" };
+        if (resp.ok) {
+            const data = await resp.json().catch(() => null);
+            if (data?.result?.songs) return { ok: true, message: "连接成功" };
+            return { ok: false, message: "返回格式异常" };
+        }
+        // 非 2xx：带响应正文片段，并探测 SullyOS Worker 代理协议
+        const text = await resp.text().catch(() => "");
+        const snippet = text.replace(/\s+/g, " ").trim().slice(0, 160);
+        const probe = await probeSullyosWorker(url);
+        if (probe) return probe;
+        return { ok: false, message: `HTTP ${resp.status}${snippet ? `：${snippet}` : ""}` };
     } catch (e) {
+        // 标准协议网络失败时也探测一次 SullyOS 协议（有些代理只放行白名单路径）
+        const probe = await probeSullyosWorker(url);
+        if (probe) return probe;
         if (e instanceof DOMException && (e.name === "AbortError" || e.name === "TimeoutError")) {
             return { ok: false, message: "连接超时，可能是服务冷启动或网络较慢" };
         }

@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useContext } from "react";
 import { Plus, RefreshCw, Rss, AlertCircle, FileEdit, Trash2, X, Check } from "lucide-react";
 import { SettingsContext } from "../phone-settings-app";
-import type { ApiConfig } from "@/lib/settings-types";
+import type { ApiConfig, GeminiSafetyThreshold } from "@/lib/settings-types";
 import { loadApiConfigs, saveApiConfigs } from "@/lib/settings-storage";
 import { generateEmbedding, isEmbeddingModelName } from "@/lib/memory-embedding";
 import { ConfirmDialog } from "@/components/ui/modal";
@@ -30,6 +30,34 @@ function getNativeToolProtocolLabel(config: ApiConfig): string {
     if (config.provider === "Google") return "Gemini";
     return "OpenAI-compatible";
 }
+
+type GeminiSafetyCategory = NonNullable<ApiConfig["geminiSafetyThresholds"]> extends infer T
+    ? T extends Partial<Record<infer K, unknown>> ? K : never
+    : never;
+
+const GEMINI_SAFETY_CATEGORIES: Array<{ key: GeminiSafetyCategory; label: string }> = [
+    { key: "HARM_CATEGORY_HARASSMENT", label: "骚扰" },
+    { key: "HARM_CATEGORY_HATE_SPEECH", label: "仇恨言论" },
+    { key: "HARM_CATEGORY_SEXUALLY_EXPLICIT", label: "色情内容" },
+    { key: "HARM_CATEGORY_DANGEROUS_CONTENT", label: "危险内容" },
+];
+
+const GEMINI_THRESHOLD_OPTIONS: Array<{ value: GeminiSafetyThreshold; label: string }> = [
+    { value: "default", label: "不拦截（BLOCK_NONE·默认）" },
+    { value: "OFF", label: "关闭过滤器（OFF）" },
+    { value: "BLOCK_ONLY_HIGH", label: "仅拦高危" },
+    { value: "BLOCK_MEDIUM_AND_ABOVE", label: "中危以上拦截" },
+    { value: "BLOCK_LOW_AND_ABOVE", label: "低危以上拦截" },
+    { value: "do_not_send", label: "不发送此类别" },
+];
+
+const GEMINI_THINKING_LEVEL_OPTIONS: Array<{ value: string; label: string }> = [
+    { value: "unset", label: "模型默认（不发送）" },
+    { value: "minimal", label: "极简（最快最省）" },
+    { value: "low", label: "低（更快更省）" },
+    { value: "medium", label: "中（均衡）" },
+    { value: "high", label: "高（推理更强）" },
+];
 
 export function ApiSettings() {
     const { setSubpageRightAction } = useContext(SettingsContext);
@@ -427,6 +455,71 @@ export function ApiSettings() {
                                                 />
                                             </span>
                                         </div>
+
+                                        {config.provider === "Google" && (
+                                            <div
+                                                className="ui-toggle-row mt-2 overflow-visible border border-black/10 rounded-xl"
+                                                style={{ display: "block", position: "relative", height: "auto", flexShrink: 0, padding: "14px 16px" }}
+                                            >
+                                                <span className="menu-label font-medium">Gemini 高级参数（原生协议）</span>
+                                                <span className="menu-desc whitespace-normal break-words leading-[1.45]">
+                                                    仅对 Gemini 原生请求生效。安全过滤默认不拦截（BLOCK_NONE），四类全部设为"不发送"时整个字段不发送。
+                                                </span>
+                                                <div className="flex flex-col gap-2 mt-3">
+                                                    {GEMINI_SAFETY_CATEGORIES.map((category) => (
+                                                        <div key={category.key} className="flex items-center justify-between gap-3">
+                                                            <span className="menu-desc shrink-0">安全过滤·{category.label}</span>
+                                                            <select
+                                                                value={config.geminiSafetyThresholds?.[category.key] ?? "default"}
+                                                                onChange={(e) => updateConfig(config.id, {
+                                                                    geminiSafetyThresholds: {
+                                                                        ...(config.geminiSafetyThresholds ?? {}),
+                                                                        [category.key]: e.target.value as GeminiSafetyThreshold,
+                                                                    },
+                                                                })}
+                                                                className="ui-select flex-1 min-w-0"
+                                                            >
+                                                                {GEMINI_THRESHOLD_OPTIONS.map((option) => (
+                                                                    <option key={option.value} value={option.value}>{option.label}</option>
+                                                                ))}
+                                                            </select>
+                                                        </div>
+                                                    ))}
+                                                    <div className="flex items-center justify-between gap-3">
+                                                        <span className="menu-desc shrink-0">思考等级（Gemini 3 系列）</span>
+                                                        <select
+                                                            value={config.geminiThinkingLevel ?? "unset"}
+                                                            onChange={(e) => updateConfig(config.id, {
+                                                                geminiThinkingLevel: e.target.value === "unset" ? undefined : e.target.value as "minimal" | "low" | "medium" | "high",
+                                                            })}
+                                                            className="ui-select flex-1 min-w-0"
+                                                        >
+                                                            {GEMINI_THINKING_LEVEL_OPTIONS.map((option) => (
+                                                                <option key={option.value} value={option.value}>{option.label}</option>
+                                                            ))}
+                                                        </select>
+                                                    </div>
+                                                    <div className="flex items-center justify-between gap-3">
+                                                        <span className="menu-desc shrink-0">展示思考过程</span>
+                                                        <span style={{ position: "relative", display: "inline-flex", width: 44, height: 26 }}>
+                                                            <Toggle
+                                                                checked={config.geminiIncludeThoughts !== false}
+                                                                onChange={(v) => updateConfig(config.id, { geminiIncludeThoughts: v })}
+                                                            />
+                                                        </span>
+                                                    </div>
+                                                    <div className="flex items-center justify-between gap-3">
+                                                        <span className="menu-desc shrink-0">允许联网搜索</span>
+                                                        <span style={{ position: "relative", display: "inline-flex", width: 44, height: 26 }}>
+                                                            <Toggle
+                                                                checked={config.geminiGoogleSearch === true}
+                                                                onChange={(v) => updateConfig(config.id, { geminiGoogleSearch: v })}
+                                                            />
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        )}
 
                                         <div className="ui-toggle-row mt-2">
                                             <span className="menu-label font-medium">启用图像识别</span>

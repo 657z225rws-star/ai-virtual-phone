@@ -138,7 +138,7 @@ function migrateBuiltinToolsToDirect(tools: RestToolConfig[]): RestToolConfig[] 
 export function loadRestTools(): RestToolConfig[] {
     if (typeof window === "undefined") return [];
     try {
-        const tools = migrateBuiltinToolsToDirect(migrateBuiltinToolsToProxy(readStoredRestTools()));
+        const tools = upgradeBuiltinWeatherSchema(removeRetiredBuiltinSearch(migrateBuiltinToolsToDirect(migrateBuiltinToolsToProxy(readStoredRestTools()))));
         // Ensure built-in tools exist
         const normalized = ensureBuiltinTools(tools).map(normalizeRestTool);
         if (JSON.stringify(tools) !== JSON.stringify(normalized)) saveRestTools(normalized);
@@ -592,8 +592,9 @@ const BUILTIN_WEATHER: RestToolConfig = {
     parameterSchema: JSON.stringify({
         type: "object",
         properties: {
-            q: { type: "string", description: "城市名，如「上海」「Beijing」" },
+            q: { type: "string", description: "城市名，必填。参数名必须是 q，不要用其他名字，如「Sydney」「上海」" },
         },
+        required: ["q"],
     }),
     fixedParams: { key: "" },  // 用户需在设置中填入 WeatherAPI Key
     directFetch: true,
@@ -603,31 +604,37 @@ const BUILTIN_WEATHER: RestToolConfig = {
     updatedAt: 0,
 };
 
-const BUILTIN_SEARCH: RestToolConfig = {
-    id: "builtin_search",
-    name: "搜索",
-    description: "搜索互联网获取最新信息",
-    endpoint: "https://api.tavily.com/search",
-    method: "POST",
-    parameterSchema: JSON.stringify({
-        type: "object",
-        properties: {
-            query: { type: "string", description: "搜索关键词" },
-        },
-    }),
-    fixedParams: { api_key: "" },  // 用户需在设置中填入 Tavily API Key
-    directFetch: true,
-    enabled: false,
-    builtIn: true,
-    createdAt: 0,
-    updatedAt: 0,
-};
+// 联网搜索已迁移为「联网搜索」内部能力（设置 → 工具箱 → 内部能力），
+// 旧的预置 Tavily 搜索工具（builtin_search）在 loadRestTools 中被自动清除。
 
 const BUILTIN_REST_TOOLS: RestToolConfig[] = [
     BUILTIN_WEB_READER,
     BUILTIN_WEATHER,
-    BUILTIN_SEARCH,
 ];
+
+// 一次性清理：把用户存储里残留的旧预置搜索工具移除
+const BUILTIN_SEARCH_REMOVAL_KEY = "cleanup_builtin_search_v1";
+function removeRetiredBuiltinSearch(tools: RestToolConfig[]): RestToolConfig[] {
+    if (kvGet(BUILTIN_SEARCH_REMOVAL_KEY)) return tools;
+    kvSet(BUILTIN_SEARCH_REMOVAL_KEY, "1");
+    const cleaned = tools.filter(tool => tool.id !== "builtin_search");
+    if (cleaned.length !== tools.length) saveRestTools(cleaned);
+    return cleaned;
+}
+
+// 一次性升级：给内置天气工具的参数 schema 补上 required（q 必填），防止模型调用时省略城市参数。
+// mergeBuiltinRestTool 以用户存储优先，代码里改 BUILTIN_WEATHER 不会影响存量数据，所以需要这条迁移。
+// 只覆盖 parameterSchema 字段，用户填的 WeatherAPI Key（fixedParams）不受影响。
+const BUILTIN_WEATHER_SCHEMA_UPGRADE_KEY = "upgrade_builtin_weather_schema_v1";
+function upgradeBuiltinWeatherSchema(tools: RestToolConfig[]): RestToolConfig[] {
+    if (kvGet(BUILTIN_WEATHER_SCHEMA_UPGRADE_KEY)) return tools;
+    kvSet(BUILTIN_WEATHER_SCHEMA_UPGRADE_KEY, "1");
+    const upgraded = tools.map(tool => (tool.id === "builtin_weather")
+        ? { ...tool, parameterSchema: BUILTIN_WEATHER.parameterSchema }
+        : tool);
+    if (JSON.stringify(upgraded) !== JSON.stringify(tools)) saveRestTools(upgraded);
+    return upgraded;
+}
 
 function mergeBuiltinRestTool(existing: RestToolConfig | undefined, builtin: RestToolConfig): RestToolConfig {
     if (!existing) return builtin;

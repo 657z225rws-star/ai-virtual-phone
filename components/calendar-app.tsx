@@ -143,6 +143,7 @@ export function PhoneCalendarApp({
   const [weekStart, setWeekStart] = useState<string>(() => getWeekStartIso(new Date()));
   const [selectedDate, setSelectedDate] = useState<string>(() => formatIsoDate(new Date()));
   const [monthExpanded, setMonthExpanded] = useState(false);
+  const [monthOffset, setMonthOffset] = useState(0);
   const [plan, setPlan] = useState<CalendarWeekPlan | null>(null);
   const [ownerPlans, setOwnerPlans] = useState<CalendarWeekPlan[]>([]);
   const [config, setConfig] = useState(() => loadCalendarConfig());
@@ -180,6 +181,10 @@ export function PhoneCalendarApp({
     setAppliedCalendarCss(trimmed);
     window.dispatchEvent(new CustomEvent("calendar-css-updated", { detail: trimmed }));
   };
+  const saveAndCloseThemePanel = () => {
+    handleApplyCalendarCss();
+    setShowThemePanel(false);
+  };
   // Listen for live CSS updates from 小卷
   useEffect(() => {
     const onCSSUpdate = (e: Event) => {
@@ -211,7 +216,17 @@ export function PhoneCalendarApp({
   const weekEventCount = plan?.items.length ?? 0;
 
   const weekDates = useMemo(() => getWeekDates(weekStart), [weekStart]);
-  const monthMatrix = useMemo(() => getMonthMatrix(weekStart), [weekStart]);
+  const monthAnchorIso = useMemo(() => {
+    const base = parseIsoDate(weekStart);
+    return formatIsoDate(new Date(base.getFullYear(), base.getMonth() + monthOffset, 1));
+  }, [weekStart, monthOffset]);
+  const monthMatrix = useMemo(() => getMonthMatrix(monthAnchorIso), [monthAnchorIso]);
+  const monthLabel = useMemo(() => {
+    const d = parseIsoDate(monthAnchorIso);
+    return d.getFullYear() === new Date().getFullYear()
+      ? `${d.getMonth() + 1}月`
+      : `${d.getFullYear()}年${d.getMonth() + 1}月`;
+  }, [monthAnchorIso]);
   const monthDates = useMemo(() => monthMatrix.flat(), [monthMatrix]);
   const itemsByDate = useMemo(() => {
     const map = new Map<string, CalendarScheduleItem[]>();
@@ -256,6 +271,27 @@ export function PhoneCalendarApp({
   const startX = useRef(0);
   const scrollLeft = useRef(0);
   const scrollTimeout = useRef<NodeJS.Timeout | undefined>(undefined);
+  const monthTouchX = useRef<number | null>(null);
+  const monthTouchY = useRef<number | null>(null);
+
+  const handleMonthTouchStart = (e: React.TouchEvent) => {
+    monthTouchX.current = e.touches[0].clientX;
+    monthTouchY.current = e.touches[0].clientY;
+  };
+
+  const handleMonthTouchEnd = (e: React.TouchEvent) => {
+    if (!monthExpanded || monthTouchX.current === null || monthTouchY.current === null) return;
+    const dx = e.changedTouches[0].clientX - monthTouchX.current;
+    const dy = e.changedTouches[0].clientY - monthTouchY.current;
+    monthTouchX.current = null;
+    monthTouchY.current = null;
+    if (Math.abs(dx) < 60 || Math.abs(dx) < Math.abs(dy) * 1.5) return;
+    setMonthOffset(offset => (dx < 0 ? offset + 1 : offset - 1));
+  };
+
+  useEffect(() => {
+    setMonthOffset(0);
+  }, [weekStart]);
 
   useEffect(() => {
     if (!selectedOwner) return;
@@ -628,13 +664,25 @@ export function PhoneCalendarApp({
               </div>
             </div>
 
+            {monthExpanded ? (
+              <div className="calendar-month-nav">
+                <button type="button" className="calendar-nav-btn" onClick={() => setMonthOffset(o => o - 1)} aria-label="上个月">
+                  <ChevronLeft size={16} />
+                </button>
+                <strong className="calendar-month-nav-label">{monthLabel}</strong>
+                <button type="button" className="calendar-nav-btn" onClick={() => setMonthOffset(o => o + 1)} aria-label="下个月">
+                  <ChevronRight size={16} />
+                </button>
+              </div>
+            ) : null}
+
             <div className="calendar-unified-grid">
               <div className="calendar-unified-weekdays">
                 {["一", "二", "三", "四", "五", "六", "日"].map(label => (
                   <span key={label}>{label}</span>
                 ))}
               </div>
-              <div className="calendar-unified-body">
+              <div className="calendar-unified-body" onTouchStart={handleMonthTouchStart} onTouchEnd={handleMonthTouchEnd}>
                 {monthMatrix.map((week, weekIdx) => {
                   const isCurrentWeek = week.some(d => isDateInWeek(d, weekStart));
                   if (!monthExpanded && !isCurrentWeek) return null;
@@ -646,7 +694,7 @@ export function PhoneCalendarApp({
                     >
                       {week.map(date => {
                         const hasItems = countsByDate.has(date);
-                        const isOutside = !isSameMonth(date, weekStart);
+                        const isOutside = !isSameMonth(date, monthAnchorIso);
                         const isInWeek = isDateInWeek(date, weekStart);
                         const menstrualState = selectedOwner?.ownerType === "user" ? weekMenstrualMap.get(date) || menstrualDayMap.get(date) : null;
                         return (
@@ -680,7 +728,7 @@ export function PhoneCalendarApp({
             </div>
 
             <div className="calendar-week-header">
-              <button type="button" className="calendar-month-toggle" onClick={() => setMonthExpanded(prev => !prev)} aria-label={monthExpanded ? "收起月历" : "展开月历"}>
+              <button type="button" className="calendar-month-toggle" onClick={() => { if (monthExpanded) setMonthOffset(0); setMonthExpanded(prev => !prev); }} aria-label={monthExpanded ? "收起月历" : "展开月历"}>
                 <ChevronDown size={16} style={{ transform: monthExpanded ? "rotate(180deg)" : undefined, transition: "transform 0.3s" }} />
               </button>
             </div>
@@ -771,7 +819,6 @@ export function PhoneCalendarApp({
               <div className="calendar-menstrual-legend">
                 <span data-type="period">经期</span>
                 <span data-type="predicted_period">预计</span>
-                <span data-type="fertile">易孕</span>
                 <span data-type="ovulation">排卵</span>
               </div>
             </div>
@@ -912,11 +959,11 @@ export function PhoneCalendarApp({
       </div>
 
       {showThemePanel && (
-        <div className="modal-overlay calendar-edit-modal-overlay" onClick={() => setShowThemePanel(false)}>
+        <div className="modal-overlay calendar-edit-modal-overlay" onClick={saveAndCloseThemePanel}>
           <div className="calendar-edit-modal" style={{ padding: 24 }} onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-3">
               <div className="ts-14 font-semibold text-[var(--c-calendar-text)]">主题色</div>
-              <button type="button" onClick={() => setShowThemePanel(false)} className="p-1 rounded-full" style={{ color: "var(--c-calendar-sub)" }}>
+              <button type="button" onClick={saveAndCloseThemePanel} className="p-1 rounded-full" style={{ color: "var(--c-calendar-sub)" }}>
                 <X size={18} />
               </button>
             </div>
@@ -987,7 +1034,7 @@ export function PhoneCalendarApp({
               }} />
               <button type="button" className="ui-btn ui-btn-outline flex-1" style={{ borderColor: "var(--c-calendar-action)", color: "var(--c-calendar-action)", fontSize: "calc(11px*var(--app-text-scale,1))", padding: "6px 0", minWidth: 0 }} onClick={() => setCalendarCustomCss(CALENDAR_CSS_EXAMPLE)}>示例</button>
               <button type="button" className="ui-btn ui-btn-outline flex-1" style={{ borderColor: "var(--c-calendar-action)", color: "var(--c-calendar-action)", fontSize: "calc(11px*var(--app-text-scale,1))", padding: "6px 0", minWidth: 0 }} onClick={() => setCalendarCustomCss("")}>清空</button>
-              <button type="button" className="ui-btn ui-btn-primary flex-1" style={{ background: "var(--c-calendar-action)", fontSize: "calc(11px*var(--app-text-scale,1))", padding: "6px 0", minWidth: 0 }} onClick={handleApplyCalendarCss}>应用</button>
+              <button type="button" className="ui-btn ui-btn-primary flex-1" style={{ background: "var(--c-calendar-action)", fontSize: "calc(11px*var(--app-text-scale,1))", padding: "6px 0", minWidth: 0 }} onClick={saveAndCloseThemePanel}>应用</button>
             </div>
           </div>
         </div>

@@ -22,7 +22,7 @@ import {
     toolNameMatches,
 } from "./tool-storage";
 import { executeCustomAppToolCall } from "./custom-app-tool-runtime";
-import { CALENDAR_MANAGEMENT_CAPABILITY_ID, LOCAL_DATA_LIBRARY_CAPABILITY_ID, MEMORY_WRITE_CAPABILITY_ID, MUSIC_CONTROL_CAPABILITY_ID, NOTE_WALL_CAPABILITY_ID, SEND_FILE_CAPABILITY_ID, TIMED_WAKE_CAPABILITY_ID, TOOLBOX_MANAGEMENT_CAPABILITY_ID, getInternalCapability } from "./internal-capability-storage";
+import { CALENDAR_MANAGEMENT_CAPABILITY_ID, LOCAL_DATA_LIBRARY_CAPABILITY_ID, MEMORY_WRITE_CAPABILITY_ID, MUSIC_CONTROL_CAPABILITY_ID, NOTE_WALL_CAPABILITY_ID, SEND_FILE_CAPABILITY_ID, TIMED_WAKE_CAPABILITY_ID, TOOLBOX_MANAGEMENT_CAPABILITY_ID, WEB_SEARCH_CAPABILITY_ID, getInternalCapability, loadWebSearchSettings } from "./internal-capability-storage";
 import { loadMemoryEntriesByType, saveMemoryEntry } from "./memory-storage";
 import type { MemoryEntry } from "./memory-types";
 import { loadCharacters } from "./character-storage";
@@ -450,8 +450,14 @@ async function executeSingleToolCall(
             && toolNameMatches(t.name, call.name, nameMacroContext)
             && (!t.packageId || !restPackageIds.has(t.packageId) || enabledRestPackageIds.has(t.packageId))
         ));
-        if (restTool) return executeRestTool(restTool, call.args, context?.signal);
-        return null;
+        if (!restTool) return null;
+        const restResult = executeRestTool(restTool, call.args, context?.signal);
+        // 天气预置工具需要 WeatherAPI Key；没配 key 时把失败原因引导到联网搜索，避免模型反复重试
+        if (restTool.id !== "builtin_weather") return restResult;
+        return restResult.then(result => {
+            if (result.success) return result;
+            return { ...result, error: appendWeatherFallbackHint(result.error) };
+        });
     };
 
     const tryMcp = () => {
@@ -747,6 +753,7 @@ async function executeInternalTool(call: ToolCall, context?: ToolExecutionContex
     if (isToolboxManagementToolName(call.name)) return executeToolboxManagementTool(call);
     if (call.name === "发送文件") return executeSendFileTool(call);
     if (call.name === "稍后主动联系" || call.name === "设置定时醒来") return executeTimedWakeTool(call, context);
+    if (call.name === "联网搜索") return executeWebSearchTool(call);
 
     if (call.name !== "写入记忆") return null;
 
@@ -764,6 +771,80 @@ async function executeInternalTool(call: ToolCall, context?: ToolExecutionContex
 
     return executeMemoryWriteTool(call.args, capability, context);
 }
+
+type WebSearchHit = { title: string; url: string; content: string };
+
+async function executeWebSearchTool(call: ToolCall): Promise<ToolResult> {
+    const query = String(call.args?.query ?? "").trim();
+    if (!query) return { name: call.name, success: false, error: "缺少搜索关键词 query" };
+    const maxResultsRaw = Number(call.args?.maxResults);
+    const maxResults = Number.isFinite(maxResultsRaw) && maxResultsRaw > 0 ? Math.min(Math.floor(maxResultsRaw), 10) : 5;
+
+    const settings = loadWebSearchSettings();
+    try {
+        let hits: WebSearchHit[];
+        if (settings.provider === "custom") {
+            hits = await webSearchCustom(settings, query, maxResults);
+        } else {
+            hits = await webSearchTavily(settings.tavilyApiKey ?? "", query, maxResults);
+        }
+        if (hits.length === 0) {
+            return { name: call.name, success: true, data: `搜索「${query}」没有返回结果。可以换个关键词重试，或直接告知对方没有查到。` };
+        }
+        const lines = hits.map((hit, index) => `[${index + 1}] ${hit.title}\n${hit.url}\n${hit.content}`);
+        return { name: call.name, success: true, data: `搜索「${query}」结果：\n\n${lines.join("\n\n")}` };
+    } catch (error: unknown) {
+        const detail = error instanceof Error ? error.message : String(error);
+        return { name: call.name, success: false, error: `联网搜索失败：${detail}` };
+    }
+}
+
+async function webSearchTavily(apiKey: string, query: string, maxResults: number): Promise<WebSearchHit[]> {
+    if (!apiKey) throw new Error("尚未配置 Tavily API Key，请到 设置 → 工具箱 → 联网搜索 里填写");
+    const response = await fetch("https://api.tavily.com/search", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ api_key: apiKey, query, max_results: maxResults, search_depth: "basic" }),
+        signal: AbortSignal.timeout(20000),
+    });
+    if (!response.ok) {
+        const text = await response.text().catch(() => "");
+        throw new Error(`Tavily 返回 ${response.status}${text ? `：${text.slice(0, 200)}` : ""}`);
+    }
+    const data = await response.json() as { results?: Array<{ title?: string; url?: string; content?: string }> };
+    return (data.results ?? []).map(item => ({
+        title: String(item.title ?? ""),
+        url: String(item.url ?? ""),
+        content: String(item.content ?? ""),
+    })).filter(hit => hit.content);
+}
+
+async function webSearchCustom(settings: WebSearchSettingsAlias, query: string, maxResults: number): Promise<WebSearchHit[]> {
+    const endpoint = settings.customEndpoint?.trim();
+    if (!endpoint) throw new Error("尚未配置自定义搜索渠道地址，请到 设置 → 工具箱 → 联网搜索 里填写");
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (settings.customApiKey) {
+        headers[settings.customAuthHeader?.trim() || "Authorization"] = settings.customApiKey;
+    }
+    const response = await fetch(endpoint, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ query, maxResults }),
+        signal: AbortSignal.timeout(20000),
+    });
+    if (!response.ok) {
+        const text = await response.text().catch(() => "");
+        throw new Error(`自定义搜索渠道返回 ${response.status}${text ? `：${text.slice(0, 200)}` : ""}`);
+    }
+    const data = await response.json() as { results?: Array<{ title?: string; url?: string; content?: string }> };
+    return (data.results ?? []).map(item => ({
+        title: String(item.title ?? ""),
+        url: String(item.url ?? ""),
+        content: String(item.content ?? ""),
+    })).filter(hit => hit.content);
+}
+
+type WebSearchSettingsAlias = ReturnType<typeof loadWebSearchSettings>;
 
 function isNoteWallToolName(name: string): boolean {
     return name === "查看便签列表"
@@ -2923,9 +3004,34 @@ function renderRestHeaders(
     return rendered;
 }
 
+// 天气预置工具（builtin_weather）失败的兜底指引，按原因分流：
+// 1. WeatherAPI 1003（缺 q 参数）→ 引导模型带 q 重试；
+// 2. WeatherAPI 1006（城市没匹配上）→ 引导改用英文城市名重试；
+// 3. 其他错误 → 原样返回。
+function appendWeatherFallbackHint(error: string | undefined): string {
+    const errText = error || "天气查询失败";
+    if (/1003|q is missing/i.test(errText)) {
+        return `${errText}\n\n提示：调用「天气查询」时缺少必填参数 q（城市名）。请重新调用本工具，并在 q 参数中传入城市名，例如 q="Sydney" 或 q="上海"，不要使用其他参数名。`;
+    }
+    if (/1006|no matching location/i.test(errText)) {
+        return `${errText}\n\n提示：WeatherAPI 没有匹配到该城市。请把城市名改写为英文（例如「悉尼」改为 "Sydney"、"上海" 改为 "Shanghai"），再用 q 参数重新调用本工具。`;
+    }
+    return errText;
+}
+
 async function executeRestTool(tool: RestToolConfig, args: Record<string, unknown>, signal?: AbortSignal): Promise<ToolResult> {
     try {
         throwIfAborted(signal);
+        // 天气预置工具兜底：模型偶尔会用 city/location/城市 等名字传城市参数，WeatherAPI 只认 q
+        let effectiveArgs = args;
+        if (tool.id === "builtin_weather") {
+            const hasQ = typeof args?.q === "string" && (args.q as string).trim() !== "";
+            if (!hasQ) {
+                const aliasKey = ["city", "cityName", "location", "城市", "城市名", "地名"]
+                    .find(k => typeof args?.[k] === "string" && (args[k] as string).trim() !== "");
+                if (aliasKey) effectiveArgs = { ...args, q: args[aliasKey] };
+            }
+        }
         const typedFixed: Record<string, unknown> = {};
         for (const [k, v] of Object.entries(tool.fixedParams || {})) {
             if (v === "true") { typedFixed[k] = true; }
@@ -2933,7 +3039,7 @@ async function executeRestTool(tool: RestToolConfig, args: Record<string, unknow
             else if (v !== "" && !isNaN(Number(v))) { typedFixed[k] = Number(v); }
             else { typedFixed[k] = v; }
         }
-        const mergedArgs = { ...args, ...typedFixed };
+        const mergedArgs = { ...effectiveArgs, ...typedFixed };
         const consumedKeys = new Set<string>();
         const headers: Record<string, string> = renderRestHeaders({ ...tool.headers }, mergedArgs, consumedKeys);
 

@@ -935,6 +935,12 @@ function MusicSettingsTab({ onBack, onSaved }: { onBack: () => void; onSaved: ()
         setTesting(true);
         setTestResult(null);
         const result = await testNeteaseConnection(config.baseUrl.trim());
+        // 测试成功时把探测到的 API 模式（standard / sullyos）一并持久化
+        if (result.kind) {
+            const nextConfig = { ...config, baseUrl: config.baseUrl.trim(), enabled: true, kind: result.kind };
+            saveMusicApiConfig(nextConfig);
+            setConfig(nextConfig);
+        }
         setTestResult(result);
         setTesting(false);
     };

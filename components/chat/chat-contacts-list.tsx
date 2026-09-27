@@ -37,9 +37,12 @@ type ChatContactsListProps = {
     onPendingAddContactConsumed?: () => void;
     /** 名片来源的添加页按返回时回到原聊天室 */
     onPendingAddContactBack?: () => void;
+    /** 桌面小组件「加好友」图标：切到本 tab 后自动打开添加页（与右上角 + 一致） */
+    autoOpenAddFriend?: boolean;
+    onAutoOpenAddFriendConsumed?: () => void;
 };
 
-export function ChatContactsList({ onCloseApp, onSelectSession, onSelectMascot, pendingAddContactId, onPendingAddContactConsumed, onPendingAddContactBack }: ChatContactsListProps) {
+export function ChatContactsList({ onCloseApp, onSelectSession, onSelectMascot, pendingAddContactId, onPendingAddContactConsumed, onPendingAddContactBack, autoOpenAddFriend, onAutoOpenAddFriendConsumed }: ChatContactsListProps) {
     const [contacts, setContacts] = useState<(ChatContact & { char?: Character })[]>([]);
     const [contactFilter, setContactFilter] = useState("");
     const [latestPost, setLatestPost] = useState<Record<string, string>>({});
@@ -85,6 +88,19 @@ export function ChatContactsList({ onCloseApp, onSelectSession, onSelectMascot, 
         setIsSendingAdd(false);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [pendingAddContactId]);
+
+    // 桌面小组件「加好友」图标：切到本 tab 后自动打开添加页，动作与右上角 + 完全一致
+    useEffect(() => {
+        if (!autoOpenAddFriend) return;
+        onAutoOpenAddFriendConsumed?.();
+        addFromCardRef.current = false;
+        setIsAddFriendOpen(true);
+        setAddQuery("");
+        setAddResult(undefined);
+        setIsSendingAdd(false);
+        setGreetingText(identity?.name ? `我是${identity.name}` : "你好");
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [autoOpenAddFriend]);
 
     /** Get the pinyin initial letter (uppercase A-Z), fallback to # */
     function getInitial(name: string): string {
@@ -225,7 +241,16 @@ export function ChatContactsList({ onCloseApp, onSelectSession, onSelectMascot, 
                 <div className="mb-3 mt-3">
                     <div
                         className="minimal-list-item"
-                        onClick={() => pendingRequests.length > 0 && setShowRequestList(true)}
+                        onClick={() => {
+                            // 有待处理的好友申请时优先展示申请列表；否则与右上角 + 相同，直接打开添加页
+                            if (pendingRequests.length > 0) { setShowRequestList(true); return; }
+                            addFromCardRef.current = false;
+                            setIsAddFriendOpen(true);
+                            setAddQuery("");
+                            setAddResult(undefined);
+                            setIsSendingAdd(false);
+                            setGreetingText(identity?.name ? `我是${identity.name}` : "你好");
+                        }}
                     >
                         <div className="w-[48px] h-[48px] rounded-full bg-[var(--c-action-blue,#246bfd)] flex items-center justify-center shrink-0">
                             <svg width={24} height={24} viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">

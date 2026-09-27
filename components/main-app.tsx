@@ -1,13 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ArrowRight } from "lucide-react";
 
 import { AccountGate } from "@/components/auth/account-gate";
 import { CloudBackupScheduler } from "@/components/cloud-backup-scheduler";
 import { MediaMaintenanceScheduler } from "@/components/media-maintenance-scheduler";
 import { DesktopShell } from "./desktop-shell";
-import { SplashAnimation } from "./splash-animation";
 import { MusicProvider } from "@/lib/music-context";
 import { hydrateKvDb } from "@/lib/kv-db";
 import { getThemeAssetMap, readThemeProfile } from "@/lib/theme-storage";
@@ -146,7 +144,7 @@ async function warmBuiltinFonts(shouldStop: () => boolean): Promise<void> {
   await Promise.all(BUILTIN_FONT_LOAD_SPECS.map((spec) => document.fonts.load(spec).catch(() => [])));
 }
 
-function SplashScreen({ ready = false, onEnter }: { ready?: boolean; onEnter?: () => void }) {
+function SplashScreen({ ready = false }: { ready?: boolean }) {
   return (
     <main className="app-root splash-root">
       <section
@@ -155,17 +153,17 @@ function SplashScreen({ ready = false, onEnter }: { ready?: boolean; onEnter?: (
       >
         <div className="phone-case">
           <div className="phone-frame">
-            <div className="phone-shell splash-phone-screen">
-              <SplashAnimation />
-              <button
-                type="button"
-                className={ready ? "splash-enter-button splash-enter-button-show" : "splash-enter-button"}
-                onClick={onEnter}
-                disabled={!ready}
-                aria-label="Enter"
-              >
-                <ArrowRight size={18} strokeWidth={1.8} />
-              </button>
+            <div
+              className={`phone-shell splash-phone-screen splash-boot-screen${ready ? " splash-boot-ready" : ""}`}
+              aria-label={TEXT.loading}
+              aria-busy={!ready}
+            >
+              <div className="splash-boot-content">
+                <h1 className="splash-boot-title">float</h1>
+                <div className="splash-boot-progress" aria-hidden>
+                  <div className="splash-boot-progress-fill" />
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -271,10 +269,17 @@ export function MainApp() {
     };
   }, []);
 
+  // 就绪后进度条充满，稍作停留让动画走完，随后自动进入桌面
+  useEffect(() => {
+    if (!hydrated || splashDismissed) return;
+    const timer = window.setTimeout(() => setSplashDismissed(true), 550);
+    return () => window.clearTimeout(timer);
+  }, [hydrated, splashDismissed]);
+
   return (
     <AccountGate>
       {!splashDismissed ? (
-        <SplashScreen ready={hydrated} onEnter={() => setSplashDismissed(true)} />
+        <SplashScreen ready={hydrated} />
       ) : (
         <main className="app-root">
           <MusicProvider>
