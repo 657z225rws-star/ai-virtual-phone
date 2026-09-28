@@ -14,6 +14,7 @@ import type { StateValue } from "./chat-storage";
 import { parseStateValues, mergeStateValues } from "./state-value-parser";
 import { stripActionShells } from "./action-parser";
 import { stripTextToolDirectives } from "./text-tool-protocol";
+import { getNowPlayingSnapshot } from "./listen-together";
 import {
     formatCustomAppDirectiveSummary,
     getCustomAppDirectiveSyntaxHead,
@@ -215,6 +216,24 @@ const RICH_PATTERNS: {
                 content: "",
                 mediaType: "music" as const,
                 mediaData: { musicTitle: title, musicArtist: artist, label: raw },
+            };
+        },
+    },
+    {
+        // [一起听] — AI 亮出"正在陪着听"状态（配合音乐氛围注入使用，见 lib/listen-together.ts）
+        // 解析瞬间抓一份正在播放的歌名做卡片快照；渲染时若有实时播放则优先显示实时曲目
+        regex: /\[一起听\]/,
+        build: () => {
+            let nowPlaying: { songName: string; artists: string } | null = null;
+            try { nowPlaying = getNowPlayingSnapshot(); } catch { /* 忽略：bridge 未注册时按无快照处理 */ }
+            return {
+                content: "",
+                mediaType: "listen_together" as const,
+                mediaData: {
+                    label: "一起听",
+                    musicTitle: nowPlaying?.songName || "",
+                    musicArtist: nowPlaying?.artists || "",
+                },
             };
         },
     },

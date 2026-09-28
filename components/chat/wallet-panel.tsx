@@ -321,19 +321,6 @@ export function WalletPanel({ onBack }: WalletPanelProps) {
         .wallet-card-stack .cp-premium-bank-card.is-active {
           opacity: 1;
         }
-        .wallet-balance-action {
-          min-height: 34px;
-          padding: 0 12px;
-          border-radius: 999px;
-          background: rgba(255,255,255,0.72);
-          border: 1px solid rgba(255,255,255,0.82);
-          color: #246bfd;
-          display: inline-flex;
-          align-items: center;
-          gap: 5px;
-          font-size: calc(12px*var(--app-text-scale,1));
-          font-weight: 700;
-        }
         .wallet-bank-action {
           min-height: 42px;
           border-radius: 16px;
@@ -347,7 +334,7 @@ export function WalletPanel({ onBack }: WalletPanelProps) {
       `}</style>
 
       <div className="p-4 flex flex-col gap-4 pb-24">
-        <section className="rounded-2xl p-5 overflow-hidden relative min-h-[156px] flex flex-col justify-between" style={{ background: "#eaf5ff", boxShadow: "0 8px 24px rgba(0,0,0,0.025)", border: "1px solid rgba(255,255,255,0.72)", color: "#172033" }}>
+        <section className="wallet-balance-hero rounded-2xl p-5 overflow-hidden relative min-h-[156px] flex flex-col justify-between">
           <div className="relative flex items-start justify-between gap-4">
             <div>
               <div className="ts-11 font-semibold opacity-70 tracking-[0.18em] uppercase">Real Balance</div>

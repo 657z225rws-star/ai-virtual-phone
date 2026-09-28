@@ -82,6 +82,7 @@ const SEARCH_MEDIA_BUBBLE_TYPES = new Set<SearchResultMediaType>([
     "image",
     "location",
     "music_share",
+    "listen_together",
     "xiaohongshu_note_share",
     "media_file",
 ]);

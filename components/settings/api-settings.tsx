@@ -508,15 +508,6 @@ export function ApiSettings() {
                                                             />
                                                         </span>
                                                     </div>
-                                                    <div className="flex items-center justify-between gap-3">
-                                                        <span className="menu-desc shrink-0">允许联网搜索</span>
-                                                        <span style={{ position: "relative", display: "inline-flex", width: 44, height: 26 }}>
-                                                            <Toggle
-                                                                checked={config.geminiGoogleSearch === true}
-                                                                onChange={(v) => updateConfig(config.id, { geminiGoogleSearch: v })}
-                                                            />
-                                                        </span>
-                                                    </div>
                                                 </div>
                                             </div>
                                         )}

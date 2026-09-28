@@ -731,10 +731,6 @@ function buildGeminiRequest(
             })),
         });
     }
-    // Gemini 3 支持内置工具与 function calling 组合使用；联网检索直接返回带引用的正文，不产生 functionCall
-    if (config.geminiGoogleSearch) {
-        toolsPayload.push({ googleSearch: {} });
-    }
     if (toolsPayload.length) body.tools = toolsPayload;
     const method = options.stream
         ? `streamGenerateContent?alt=sse&key=${encodeURIComponent(config.apiKey)}`
@@ -780,13 +776,15 @@ function geminiParts(message: LlmRequestMessage): unknown[] {
             ...(message.content ? [{ text: message.content }] : []),
             ...message.toolCalls.map((call) => {
                 const hasArgs = call.args && typeof call.args === "object" && Object.keys(call.args).length > 0;
+                // 注意：thoughtSignature 是对"函数名+参数"整体做的校验。参数被 noop 顶替时
+                // 绝不能携带原签名，否则 Gemini 必报 400 "Invalid thought signature"。
                 const part: Record<string, unknown> = {
                     functionCall: {
                         name: call.name,
                         args: hasArgs ? call.args : { noop: "1" },
                     },
                 };
-                if (call.thoughtSignature) part.thoughtSignature = call.thoughtSignature;
+                if (call.thoughtSignature && hasArgs) part.thoughtSignature = call.thoughtSignature;
                 return part;
             }),
         ];

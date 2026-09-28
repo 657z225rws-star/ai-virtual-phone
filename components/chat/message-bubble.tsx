@@ -20,6 +20,7 @@ import { Blocks, Maximize2, ReceiptText, RefreshCw } from "lucide-react";
 import { retryChatGeneratedImage } from "@/lib/generated-image-retry";
 import { ScanPayCard } from "@/components/chat/scan-pay-card";
 import { payWithWalletBalance } from "@/lib/wallet-storage";
+import { useMusicPlayerOptional } from "@/lib/music-context";
 import { formatShoppingPaymentRequestHistory } from "@/lib/shopping-payment-request";
 import { toCustomAppIconId } from "@/lib/custom-app-types";
 import { ChatPluginSlot } from "@/components/chat/chat-plugin-slot";
@@ -109,6 +110,8 @@ export const MessageBubble = memo(function MessageBubble({ msg, onUpdate, charNa
             return <QuoteBubble msg={msg} displayContent={displayContent} defaultTranslationExpanded={defaultTranslationExpanded} />;
         case "music_share":
             return <MusicShareBubble msg={msg} onPlay={onMusicPlay} />;
+        case "listen_together":
+            return <ListenTogetherBubble msg={msg} />;
         case "media_file":
             return <MediaFileBubble msg={msg} onUpdate={onUpdate} characterId={characterId} />;
         case "xiaohongshu_note_share":
@@ -2111,6 +2114,29 @@ function MusicShareBubble({ msg, onPlay }: { msg: ChatMessage; onPlay?: (title: 
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M9 18V5l12-2v13" /><circle cx="6" cy="18" r="3" /><circle cx="18" cy="16" r="3" /></svg>
                 <span>音乐</span>
             </div>
+        </div>
+    );
+}
+
+// ── Listen Together Bubble ────────────────────────────
+
+/** [一起听] 卡片：优先显示实时播放中的曲目；音乐停了回退到发送时的快照 */
+function ListenTogetherBubble({ msg }: { msg: ChatMessage }) {
+    const player = useMusicPlayerOptional();
+    const live = player?.isPlaying ? player.currentTrack : null;
+    const title = live?.title || msg.mediaData?.musicTitle || "";
+    const artist = live?.artist || msg.mediaData?.musicArtist || "";
+    const isLive = !!live;
+    return (
+        <div className="chat-listen-together-card" data-live={isLive ? "1" : "0"}>
+            <div className="chat-listen-together-head">
+                <span className={`chat-listen-together-eq ${isLive ? "chat-listen-together-eq-on" : ""}`} aria-hidden="true">
+                    <i /><i /><i />
+                </span>
+                <span className="chat-listen-together-label">{isLive ? "正在和你一起听" : "一起听过"}</span>
+            </div>
+            {title && <div className="chat-listen-together-title">{title}</div>}
+            {artist && <div className="chat-listen-together-artist">{artist}</div>}
         </div>
     );
 }

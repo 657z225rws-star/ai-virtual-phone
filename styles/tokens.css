@@ -1276,3 +1276,65 @@
   background: var(--c-adv-input-border);
   border-radius: 2px;
 }
+
+/* ═══════════════════════════════════════════
+   夜间模式 — html[data-theme="dark"]
+   配色参考 DualStar 韩系低饱和黑白灰：
+   bg #1A1A1A / 卡片 #262626 / 文字 #E8E8E8
+   只覆盖结构色；音乐/日历/视觉小说等自带完整
+   配色方案的专项页面暂保持原样，后续按需追加。
+   ═══════════════════════════════════════════ */
+html[data-theme="dark"] {
+  --c-header-bg: #202020;
+  --c-page-body-bg: #1A1A1A;
+  --c-card: #262626;
+  --c-card-border: #333333;
+  --c-polaroid: #2C2C2C;
+  --c-polaroid-back: #242424;
+  --c-panel: #242424;
+  --c-panel-border: #3A3A3A;
+  --c-text-title: #E8E8E8;
+  --c-text: #A8ACB2;
+  --c-icon-active: #DADADA;
+  --c-icon: #787C82;
+  --c-input: #2A2A2A;
+  --c-input-border: rgba(255, 255, 255, 0.08);
+  --c-bubble-self: #2E5BD8;
+  --c-bubble-other: #2E2E2E;
+  --c-success: #3DC268;
+  --c-danger: #F05A50;
+  --c-warning: #FFA020;
+  --c-transfer-bg: #352C1C;
+  --c-transfer-text: #EBC878;
+  --c-overlay: rgba(0, 0, 0, 0.55);
+  /* 桌面组件 */
+  --c-home-label: rgba(255, 255, 255, 0.92);
+  --c-home-text: rgba(255, 255, 255, 0.78);
+  --c-home-sub: rgba(255, 255, 255, 0.45);
+  --c-home-card: rgba(255, 255, 255, 0.02);
+  --c-home-glass: rgba(28, 28, 28, 0.35);
+  --c-home-border: rgba(255, 255, 255, 0.08);
+  color-scheme: dark;
+}
+
+html[data-theme="dark"] .chat-app {
+  --c-header-bg: #202020;
+  --c-page-body-bg: #171717;
+  --c-card: #262626;
+  --c-card-border: #333333;
+  --c-polaroid: #2C2C2C;
+  --c-polaroid-back: #242424;
+  --c-panel: #242424;
+  --c-panel-border: #3A3A3A;
+  --c-text-title: #E8E8E8;
+  --c-text: #A8ACB2;
+  --c-icon-active: #DADADA;
+  --c-icon: #787C82;
+  --c-input: #2C2C2C;
+  --c-input-border: rgba(255, 255, 255, 0.1);
+  --c-bubble-self: #2E5BD8;
+  --c-bubble-other: #2E2E2E;
+  --c-transfer-bg: #352C1C;
+  --c-transfer-text: #EBC878;
+  --c-overlay: rgba(0, 0, 0, 0.55);
+}

@@ -54,6 +54,7 @@ import { retrieveCoreMemoriesForPrompt, retrieveMemoriesForPrompt } from "./memo
 import { formatCoreMemories, formatLongTermMemories } from "./memory-injector";
 import { maybeRunSummarization } from "./memory-summarizer";
 import { prepareShortTermContext } from "./short-term-assembler";
+import { buildMusicAtmosphere } from "./listen-together";
 import { parseActionTags, dispatchActions } from "./action-parser";
 import { findEnabledToolForSchema, getEnabledTools, type EnabledTool } from "./tool-storage";
 import { formatToolsForPrompt, formatToolSchema } from "./tool-prompt";
@@ -1069,7 +1070,7 @@ export async function sendLLMToolStreamRequest(
     const firedToolCallStarts = new Set<number>();
 
     try {
-        const response = await fetch(request.url, {
+        let response = await fetch(request.url, {
             method: "POST",
             headers: request.headers,
             body: requestBodyJson,
@@ -1078,7 +1079,21 @@ export async function sendLLMToolStreamRequest(
 
         if (!response.ok) {
             const errorText = await response.text();
-            throw new ChatEngineError(`API Tool Stream Error ${response.status}: ${errorText}`);
+            if (isInvalidThoughtSignature400(response.status, errorText)) {
+                // 降级重试：剥掉全部思考签名再试一次（签名坏 → 缺签名，Gemini 接受缺签名）
+                console.warn("[ChatEngine] Invalid thought signature — retrying once without signatures (stream)");
+                response = await fetch(request.url, {
+                    method: "POST",
+                    headers: request.headers,
+                    body: JSON.stringify(stripThoughtSignatures(request.body)),
+                    signal: llmAbort.signal,
+                });
+                if (!response.ok) {
+                    throw new ChatEngineError(`API Tool Stream Error ${response.status}: ${await response.text()}`);
+                }
+            } else {
+                throw new ChatEngineError(`API Tool Stream Error ${response.status}: ${errorText}`);
+            }
         }
         if (!response.body) throw new ChatEngineError("原生动作流式响应没有 body。");
 
@@ -1186,6 +1201,25 @@ export async function sendLLMToolStreamRequest(
     }
 }
 
+/** 深拷贝并剥掉所有 thoughtSignature 字段（Gemini 3 签名校验失败时的降级重试用） */
+function stripThoughtSignatures(value: unknown): unknown {
+    if (Array.isArray(value)) return value.map(stripThoughtSignatures);
+    if (value && typeof value === "object") {
+        const out: Record<string, unknown> = {};
+        for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+            if (k === "thoughtSignature") continue;
+            out[k] = stripThoughtSignatures(v);
+        }
+        return out;
+    }
+    return value;
+}
+
+/** Gemini 3 拒收坏签名（历史里的签名损坏/被改写）；缺签名它反而能接受，可降级重试 */
+function isInvalidThoughtSignature400(status: number, errorText: string): boolean {
+    return status === 400 && /invalid thought signature/i.test(errorText);
+}
+
 export async function sendLLMToolRequest(
     config: ApiConfig,
     preset: PresetConfig | null,
@@ -1214,7 +1248,7 @@ export async function sendLLMToolRequest(
     const detachExternalAbort = attachExternalAbort(llmAbort, options?.signal);
 
     try {
-        const response = await fetch(request.url, {
+        let response = await fetch(request.url, {
             method: "POST",
             headers: request.headers,
             body: requestBodyJson,
@@ -1223,7 +1257,21 @@ export async function sendLLMToolRequest(
 
         if (!response.ok) {
             const errorText = await response.text();
-            throw new ChatEngineError(`API Tool Error ${response.status}: ${errorText}`);
+            if (isInvalidThoughtSignature400(response.status, errorText)) {
+                // 降级重试：剥掉全部思考签名再试一次（签名坏 → 缺签名，Gemini 接受缺签名）
+                console.warn("[ChatEngine] Invalid thought signature — retrying once without signatures");
+                response = await fetch(request.url, {
+                    method: "POST",
+                    headers: request.headers,
+                    body: JSON.stringify(stripThoughtSignatures(request.body)),
+                    signal: llmAbort.signal,
+                });
+                if (!response.ok) {
+                    throw new ChatEngineError(`API Tool Error ${response.status}: ${await response.text()}`);
+                }
+            } else {
+                throw new ChatEngineError(`API Tool Error ${response.status}: ${errorText}`);
+            }
         }
 
         const data = await response.json();
@@ -1893,6 +1941,14 @@ export async function buildChatPromptMessages(
         offlineSummaryTag: preset?.story_summary_tag?.trim() || "summary",
         nativeToolHistory: usesNativeActions,
     });
+    // 音乐氛围注入（一起听）：仅单聊主链路。易变状态放消息数组尾部（参考 SullyOS 的做法，
+    // 不进 system prompt 前缀，避免破坏前缀缓存）；未在播放时 buildMusicAtmosphere 返回空串。
+    if (resolvedAppId === "chat" && !session.isGroup && !isOfflineMode) {
+        const musicAtmosphere = buildMusicAtmosphere(character.id, userIdentity?.name || "");
+        if (musicAtmosphere) {
+            llmMessages.push({ role: "system", content: musicAtmosphere });
+        }
+    }
     if (promptProfile?.output === "plain_text") {
         llmMessages.push({
             role: "system",

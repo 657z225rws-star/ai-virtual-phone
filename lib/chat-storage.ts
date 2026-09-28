@@ -97,6 +97,7 @@ export type ChatMessage = {
         | "accept_red_packet" | "decline_red_packet" | "accept_transfer" | "decline_transfer"
         | "payment_request" | "accept_payment_request" | "decline_payment_request"
         | "music" | "music_share" | "music_notify" | "music_not_found"
+        | "listen_together"
         | "xiaohongshu_note_share"
         | "gift"
         | "contact_card"
@@ -271,6 +272,7 @@ const MEDIA_PREVIEW_MAP: Record<string, string> = {
     payment_request: "[代付请求]",
     music: "[音乐]",
     music_share: "[音乐分享]",
+    listen_together: "[一起听]",
     xiaohongshu_note_share: "[小红书分享]",
     app_card: "[应用卡片]",
     tool_notice: "[执行动作]",

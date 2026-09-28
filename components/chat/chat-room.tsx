@@ -47,6 +47,7 @@ import { AlertCircle, Blocks, Check, Trash2, User, ChevronLeft, ChevronRight, Cl
 import { setDebugChatState } from "@/lib/debug-store";
 import { scopeSessionCSS } from "@/lib/css-scoper";
 import { setChatActive } from "@/lib/music-action-queue";
+import { addListeningPartner } from "@/lib/listen-together";
 import { getMusicControlBridge } from "@/lib/music-control-bridge";
 import { findPlayableMatch, getNeteaseLyrics, getNeteaseSongDetail } from "@/lib/music-service";
 import { approveMemoryWriteRequest } from "@/lib/tool-executor";
@@ -173,6 +174,7 @@ const CHAT_VISUAL_MEDIA_TYPES = new Set([
     "image",
     "location",
     "music_share",
+    "listen_together",
     "xiaohongshu_note_share",
     "app_card",
     "audio",
@@ -221,6 +223,7 @@ const CHAT_MEDIA_BUBBLE_TYPES = new Set([
     "image",
     "location",
     "music_share",
+    "listen_together",
     "xiaohongshu_note_share",
     "app_card",
     "media_file",
@@ -1386,6 +1389,19 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
         setChatActive(true, flushCallback);
         return () => { setChatActive(false); };
     }, [session.id]);
+
+    // --- 一起听：角色发出 [一起听] 卡片时登记进"一起听名单"（见 lib/listen-together.ts）---
+    const seenListenTogetherIdsRef = useRef<Set<string>>(new Set());
+    useEffect(() => {
+        for (const m of messages) {
+            if (m.mediaType !== "listen_together") continue;
+            if (seenListenTogetherIdsRef.current.has(m.id)) continue;
+            seenListenTogetherIdsRef.current.add(m.id);
+            // 只对角色的卡片生效；历史加载时会一并登记，但音乐未播放时氛围注入不会产出措辞，无副作用
+            const senderId = m.senderCharacterId || session.contactId;
+            if (m.role === "assistant" && senderId) addListeningPartner(senderId);
+        }
+    }, [messages, session.contactId]);
 
     // --- Follow-up: listen for background service events ---
     useEffect(() => {
@@ -2804,6 +2820,7 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
             if (m.mediaType === "location") return `分享了位置: ${m.mediaData?.label || ""}`.trim();
             if (m.mediaType === "audio") return `发了一条语音: ${m.mediaData?.label || ""}`.trim();
             if (m.mediaType === "music_share") return `分享了音乐: ${m.mediaData?.musicTitle || ""}`.trim();
+            if (m.mediaType === "listen_together") return "想和你一起听这首歌".trim();
             if (m.mediaType === "xiaohongshu_note_share") return `分享了一条小红书帖子: ${m.mediaData?.xiaohongshuTitle || ""}`.trim();
             if (m.mediaType === "app_card") return `分享了${m.mediaData?.appName || "APP"}卡片: ${m.mediaData?.appCardTitle || m.mediaData?.appCardSummary || ""}`.trim();
             if (m.mediaType === "quote") return `引用回复: ${m.mediaData?.quotePreview || ""}`.trim();

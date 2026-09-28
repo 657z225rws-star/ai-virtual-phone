@@ -139,8 +139,6 @@ export type ApiConfig = {
     geminiThinkingLevel?: "minimal" | "low" | "medium" | "high";
     /** true 时请求 includeThoughts，模型返回思维链文本；未设置视为开启 */
     geminiIncludeThoughts?: boolean;
-    /** true 时启用 Gemini 原生联网检索（googleSearch 工具） */
-    geminiGoogleSearch?: boolean;
 };
 
 // --- VoiceApiConfig (migrated from voice-settings.tsx) ---

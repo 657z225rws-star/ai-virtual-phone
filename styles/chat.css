@@ -28,7 +28,7 @@
 
 .chat-room-layer {
   z-index: 30;
-  background: #fff;
+  background: var(--c-page-body-bg, #fff);
   isolation: isolate;
 }
 
@@ -2079,6 +2079,156 @@
   color: var(--c-music-accent, #7c9a92);
   font-size: calc(9px*var(--app-text-scale,1));
   opacity: 0.7;
+}
+
+/* ── Listen Together Card ([一起听]) ── */
+
+.chat-listen-together-card {
+  width: 200px;
+  border-radius: 14px;
+  padding: 10px 12px;
+  background: var(--c-music-surface, rgba(255,255,255,0.06));
+  border: 1px solid var(--c-music-surface-solid, rgba(255,255,255,0.12));
+  backdrop-filter: blur(16px);
+}
+
+.chat-listen-together-head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.chat-listen-together-label {
+  font-size: calc(10px*var(--app-text-scale,1));
+  color: var(--c-music-accent, #7c9a92);
+  opacity: 0.85;
+}
+
+.chat-listen-together-eq {
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 10px;
+}
+
+.chat-listen-together-eq i {
+  width: 2px;
+  height: 4px;
+  border-radius: 1px;
+  background: var(--c-music-accent, #7c9a92);
+  opacity: 0.5;
+}
+
+.chat-listen-together-eq-on i {
+  animation: chat-listen-eq 0.9s ease-in-out infinite;
+  opacity: 0.9;
+}
+
+.chat-listen-together-eq-on i:nth-child(2) { animation-delay: 0.25s; }
+.chat-listen-together-eq-on i:nth-child(3) { animation-delay: 0.5s; }
+
+@keyframes chat-listen-eq {
+  0%, 100% { height: 3px; }
+  50% { height: 10px; }
+}
+
+.chat-listen-together-title {
+  margin-top: 7px;
+  font-size: calc(11.7px*var(--app-text-scale,1));
+  font-weight: 600;
+  color: var(--c-music-text, #2d3b36);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.chat-listen-together-artist {
+  margin-top: 3px;
+  font-size: calc(9.9px*var(--app-text-scale,1));
+  color: var(--c-music-accent, #7c9a92);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 夜间模式：一起听卡片在深色聊天里改用深色底（音乐模块自身变量不动） */
+html[data-theme="dark"] .chat-listen-together-card {
+  background: rgba(42, 42, 42, 0.92);
+  border-color: rgba(255, 255, 255, 0.12);
+}
+html[data-theme="dark"] .chat-listen-together-title {
+  color: #e8e8e8;
+}
+html[data-theme="dark"] .chat-listen-together-label,
+html[data-theme="dark"] .chat-listen-together-artist {
+  color: #9fc0b6;
+}
+html[data-theme="dark"] .chat-listen-together-eq i {
+  background: #9fc0b6;
+}
+
+/* 夜间模式：音乐分享卡同样处理 */
+html[data-theme="dark"] .chat-music-share-card {
+  background: rgba(42, 42, 42, 0.92);
+  border-color: rgba(255, 255, 255, 0.12);
+}
+html[data-theme="dark"] .chat-music-share-cover {
+  background: rgba(255, 255, 255, 0.08);
+}
+html[data-theme="dark"] .chat-music-share-title {
+  color: #e8e8e8;
+}
+html[data-theme="dark"] .chat-music-share-artist,
+html[data-theme="dark"] .chat-music-share-footer {
+  color: #9fc0b6;
+}
+html[data-theme="dark"] .chat-music-share-footer {
+  border-top-color: rgba(255, 255, 255, 0.08);
+}
+
+/* 夜间模式：媒体文件卡同样处理 */
+html[data-theme="dark"] .chat-media-file-card {
+  background: rgba(42, 42, 42, 0.92);
+}
+html[data-theme="dark"] .chat-media-file-title,
+html[data-theme="dark"] .chat-media-file-generic {
+  color: #e8e8e8;
+}
+html[data-theme="dark"] .chat-media-file-time,
+html[data-theme="dark"] .chat-media-file-save {
+  color: #9fc0b6;
+}
+
+/* ── 余额卡（"我"页入口 + 钱包页汇总卡共用，含夜间模式） ── */
+.wallet-balance-hero {
+  background: #eaf5ff;
+  border: 1px solid rgba(255, 255, 255, 0.72);
+  color: #172033;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.025);
+}
+html[data-theme="dark"] .wallet-balance-hero {
+  background: #2a2a2a;
+  border-color: rgba(255, 255, 255, 0.08);
+  color: #e8e8e8;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+}
+.wallet-balance-action {
+  min-height: 34px;
+  padding: 0 12px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.82);
+  color: #246bfd;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: calc(12px*var(--app-text-scale,1));
+  font-weight: 700;
+}
+html[data-theme="dark"] .wallet-balance-action {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.14);
+  color: #7ea4ff;
 }
 
 /* ── Media File Card ── */

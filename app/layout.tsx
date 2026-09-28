@@ -36,6 +36,12 @@ export default function RootLayout({
         <meta name="apple-mobile-web-app-title" content="float" />
         <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
         <meta name="mobile-web-app-capable" content="yes" />
+        {/* 夜间模式防闪烁：首帧渲染前同步应用已保存的主题 */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `try{if(localStorage.getItem("float-theme-mode")==="dark"){document.documentElement.dataset.theme="dark";var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute("content","#1a1a1a")}}catch(e){}`,
+          }}
+        />
       </head>
       <body>
         <PWARegistrar />

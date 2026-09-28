@@ -7,6 +7,7 @@ import { getAudioBlob, markTrackPlayed } from "./music-storage";
 import { findPlayableMatch, getNeteaseLyrics, getNeteasePlayUrl, getNeteaseSongDetail } from "./music-service";
 import { kvGet, kvSet, registerKvMigration } from "./kv-db";
 import { registerMusicControlBridge } from "./music-control-bridge";
+import { noteTrackSwitch } from "./listen-together";
 
 // ── Types ──
 
@@ -110,6 +111,18 @@ export function MusicProvider({ children }: { children: ReactNode }) {
     useEffect(() => {
         persistQueue(queue);
     }, [queue]);
+
+    // 一起听是持续状态（见 lib/listen-together.ts）：切歌、暂停都不会断开，
+    // 只有刷新页面才随内存结束。切歌时只记下被切掉的歌，让角色下一轮能"察觉"换歌。
+    const prevTogetherTrackRef = useRef<{ id: string; title: string; artist: string } | null>(null);
+    useEffect(() => {
+        if (!isPlaying || !currentTrack) return;
+        const prev = prevTogetherTrackRef.current;
+        if (prev && prev.id !== currentTrack.id) {
+            noteTrackSwitch({ songName: prev.title, artists: prev.artist });
+        }
+        prevTogetherTrackRef.current = { id: currentTrack.id, title: currentTrack.title, artist: currentTrack.artist };
+    }, [currentTrack?.id, isPlaying]);
 
     /** Wrapped setQueue with max size enforcement */
     const setQueue = useCallback((tracks: MusicTrack[]) => {

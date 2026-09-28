@@ -24,6 +24,7 @@ import { loadCharacters } from "@/lib/character-storage";
 import { triggerImmediatePost } from "@/lib/moments-engine";
 import type { Character } from "@/lib/character-types";
 import { requestNotificationPermission } from "@/lib/browser-notification";
+import { getThemeMode, setThemeMode } from "@/lib/ui-theme";
 import { kvGet, kvSet, kvRemove } from "@/lib/kv-db";
 import { formatWalletAmount, getWalletBalance, loadWalletState, WALLET_UPDATED_EVENT } from "@/lib/wallet-storage";
 import { ChatFallbackAvatar } from "./chat-fallback-avatar";
@@ -35,6 +36,7 @@ import {
     Heart,
     MessageSquare,
     MessageSquareDashed,
+    Moon,
     Palette,
     Puzzle,
     Keyboard,
@@ -146,6 +148,7 @@ export function UserProfilePanel({ onClose, className }: UserProfilePanelProps) 
     const [notifHint, setNotifHint] = useState<string | null>(null);
     const [notifChecking, setNotifChecking] = useState(false);
     const [enterToSendEnabled, setEnterToSendEnabled] = useState(false);
+    const [darkModeEnabled, setDarkModeEnabled] = useState(false);
     const [userStats, setUserStats] = useState({ chats: 0, moments: 0, visitors: 1234 });
     const [walletSummary, setWalletSummary] = useState(() => {
         const wallet = loadWalletState();
@@ -161,6 +164,7 @@ export function UserProfilePanel({ onClose, className }: UserProfilePanelProps) 
         const browserGranted = isBrowserNotificationGranted();
         setNotifEnabled(settings.browserNotificationsEnabled === true && browserGranted);
         setEnterToSendEnabled(settings.enterToSendEnabled === true);
+        setDarkModeEnabled(getThemeMode() === "dark");
         if (settings.browserNotificationsEnabled === true && !browserGranted) {
             setNotifHint(readBrowserNotificationPermissionHint());
         }
@@ -226,6 +230,11 @@ export function UserProfilePanel({ onClose, className }: UserProfilePanelProps) 
     const handleEnterToSendToggle = (enabled: boolean) => {
         setEnterToSendEnabled(enabled);
         saveChatAppSettings({ ...loadChatAppSettings(), enterToSendEnabled: enabled });
+    };
+
+    const handleDarkModeToggle = (enabled: boolean) => {
+        setDarkModeEnabled(enabled);
+        setThemeMode(enabled ? "dark" : "light");
     };
 
     if (showFollowUpEditor) {
@@ -332,20 +341,19 @@ export function UserProfilePanel({ onClose, className }: UserProfilePanelProps) 
 
                     <button
                         type="button"
-                        className="mx-4 mb-4 rounded-2xl overflow-hidden text-left relative min-h-[132px] p-5 flex flex-col justify-between"
+                        className="wallet-balance-hero mx-4 mb-4 rounded-2xl overflow-hidden text-left relative min-h-[132px] p-5 flex flex-col justify-between"
                         onClick={() => { window.dispatchEvent(new CustomEvent("chat-hide-tabbar", { detail: true })); setShowWalletPanel(true); }}
-                        style={{ background: "#eaf5ff", boxShadow: "0 8px 24px rgba(0,0,0,0.025)", border: "1px solid rgba(255,255,255,0.72)", color: "#172033" }}
                     >
                         <div className="relative flex items-start justify-between gap-4">
                             <div>
                                 <div className="ts-11 font-semibold opacity-70 tracking-[0.18em] uppercase">Real Balance</div>
                                 <div className="ts-30 font-semibold mt-2" style={{ fontFamily: "Georgia, serif" }}>{walletSummary.totalLabel}</div>
                             </div>
-                            <span className="ts-11 font-semibold opacity-70 tracking-[0.18em] shrink-0" style={{ color: "#172033" }}>{walletSummary.cardCount}张银行卡</span>
+                            <span className="ts-11 font-semibold opacity-70 tracking-[0.18em] shrink-0">{walletSummary.cardCount}张银行卡</span>
                         </div>
                         <div className="relative flex items-center justify-between gap-3">
                             <span className="ts-12 opacity-75">余额管理 · 银行卡与流水</span>
-                            <span className="h-8 px-3 rounded-full bg-white/70 border border-white/80 ts-12 font-semibold flex items-center gap-1" style={{ color: "#246bfd" }}>
+                            <span className="wallet-balance-action h-8 px-3 rounded-full ts-12 font-semibold flex items-center gap-1">
                                 查看
                                 <ChevronRight size={14} />
                             </span>
@@ -391,6 +399,15 @@ export function UserProfilePanel({ onClose, className }: UserProfilePanelProps) 
                     {/* 输入与提醒 */}
                     <div className="mx-4 mb-4 bg-[var(--c-card)] rounded-2xl px-4 py-1 flex flex-col"
                          style={{ boxShadow: "0 8px 24px rgba(0,0,0,0.025)" }}>
+                        <div className="flex items-center gap-3 py-3 w-full border-b border-[color-mix(in_srgb,var(--c-card-border)_20%,transparent)]">
+                            <Moon size={18} className="text-[var(--c-icon)] opacity-70" strokeWidth={1.25}/>
+                            <div className="flex flex-col flex-1 text-left gap-0.5">
+                                <span className="ts-14 font-semibold text-[var(--c-text-title)]">夜间模式</span>
+                                <span className="ts-11 text-[var(--c-text)] opacity-70">全局切换为护眼深色配色</span>
+                            </div>
+                            <Toggle checked={darkModeEnabled} onChange={handleDarkModeToggle} />
+                        </div>
+
                         <div className="flex items-center gap-3 py-3 w-full border-b border-[color-mix(in_srgb,var(--c-card-border)_20%,transparent)]">
                             <Keyboard size={18} className="text-[var(--c-icon)] opacity-70" strokeWidth={1.25}/>
                             <div className="flex flex-col flex-1 text-left gap-0.5">

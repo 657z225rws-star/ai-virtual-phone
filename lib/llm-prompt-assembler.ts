@@ -1404,6 +1404,8 @@ export function formatRichMediaForHistory(msg: ChatMessage, userName: string, ch
             const mTitle = d?.musicTitle || "未知歌曲";
             return `[音乐分享:${mTitle}]`;
         }
+        case "listen_together":
+            return "[一起听]";
         case "xiaohongshu_note_share":
             return formatXiaohongshuShareForPrompt({
                 author: d?.xiaohongshuAuthor,
