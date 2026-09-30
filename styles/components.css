@@ -868,6 +868,13 @@
   color: white;
   box-shadow: 0 4px 14px color-mix(in srgb, var(--c-icon-active) 35%, transparent), inset 0 1px 1px rgba(255,255,255,0.15);
 }
+/* 夜间模式：主按钮反色为浅底深字，避免浅灰底配白字看不清 */
+html[data-theme="dark"] .ui-btn-primary,
+html[data-theme="dark"] .ui-btn-action {
+  background: #e8e8e8;
+  color: #1a1a1a;
+  box-shadow: 0 4px 14px rgba(0,0,0,0.35), inset 0 1px 1px rgba(255,255,255,0.25);
+}
 .ui-btn-success {
   background: var(--c-success);
   color: white;

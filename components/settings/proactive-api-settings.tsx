@@ -117,12 +117,25 @@ export function ProactiveApiSettings({ onNotice }: { onNotice: (msg: string) => 
         onNotice(`已填入「${picked.name || picked.provider}」`);
     }, [apiConfigs, editing, onNotice, updateEntry]);
 
-    const closeEditor = useCallback(() => {
+    /** ✕ 关闭 = 取消：新建的还没保存意愿就直接丢弃，避免留下一堆空卡片 */
+    const discardEditor = useCallback(() => {
         if (isNew && editing) removeEntry(editing.id);
         setIsNew(false);
         setEditingId(null);
         setStatus(null);
     }, [editing, isNew, removeEntry]);
+
+    /** ✓ 关闭 = 保存：字段改动本来就实时落盘，这里只负责收尾关弹层。
+     *  如果是新建且三个关键字段全空，视为没填，按取消处理（不留"未命名"垃圾卡片）。 */
+    const saveEditor = useCallback(() => {
+        if (editing && isNew && !editing.apiUrl.trim() && !editing.apiKey.trim() && !editing.model.trim()) {
+            discardEditor();
+            return;
+        }
+        setIsNew(false);
+        setEditingId(null);
+        setStatus(null);
+    }, [discardEditor, editing, isNew]);
 
     const handleTest = useCallback(async () => {
         if (!editing) return;
@@ -234,9 +247,9 @@ export function ProactiveApiSettings({ onNotice }: { onNotice: (msg: string) => 
                 <div className="modal-overlay modal-overlay-bottom">
                     <div className="modal-sheet" data-ui="modal-sheet">
                         <div className="modal-header" data-ui="modal-header">
-                            <button onClick={closeEditor} className="modal-header-btn modal-header-btn-muted"><X size={18} /></button>
+                            <button onClick={discardEditor} className="modal-header-btn modal-header-btn-muted" aria-label="取消"><X size={18} /></button>
                             <span className="modal-header-title">{isNew ? "添加配置" : "编辑配置"}</span>
-                            <button onClick={closeEditor} className="modal-header-btn modal-header-btn-action"><Check size={18} /></button>
+                            <button onClick={saveEditor} className="modal-header-btn modal-header-btn-action" aria-label="保存"><Check size={18} /></button>
                         </div>
 
                         <div className="modal-body hide-scrollbar flex flex-col gap-4 pb-10" data-ui="modal-body">
