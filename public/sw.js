@@ -70,14 +70,52 @@ async function cacheFirst(request) {
   return response;
 }
 
+// ── 主动消息推送 ──
+// 消息文本由云端 Worker 生成好放在 payload 里（{type:'amsg', title, body, characterId}），
+// 这里只负责弹通知 + 通知页面去拉收件箱。app 没开时页面那半不会跑，但消息已经落在云端收件箱，
+// 下次打开 app 会补进来，所以推送丢了也不会丢消息。
+self.addEventListener("push", (event) => {
+  let payload = {};
+  try {
+    payload = event.data ? event.data.json() : {};
+  } catch {
+    payload = {};
+  }
+
+  const title = payload.title || "新消息";
+  const body = payload.body || "";
+  const options = {
+    body,
+    icon: "/icon-192.png",
+    badge: "/icon-192.png",
+    tag: payload.taskId ? `amsg-${payload.taskId}` : `amsg-${Date.now()}`,
+    renotify: true,
+    data: { url: "/", characterId: payload.characterId || null },
+  };
+
+  event.waitUntil(
+    self.registration.showNotification(title, options).then(async () => {
+      try {
+        const clients = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+        for (const client of clients) client.postMessage({ type: "amsg-push", payload });
+      } catch {
+        /* 没有页面在跑就算了，收件箱兜底 */
+      }
+    })
+  );
+});
+
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
+  const target = (event.notification.data && event.notification.data.url) || "/";
   event.waitUntil(
     self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clients) => {
       for (const client of clients) {
-        if ("focus" in client) return client.focus();
+        if ("focus" in client) {
+          return client.focus().catch(() => {});
+        }
       }
-      return self.clients.openWindow("/");
+      return self.clients.openWindow(target);
     })
   );
 });

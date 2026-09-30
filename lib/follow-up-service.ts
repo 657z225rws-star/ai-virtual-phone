@@ -34,9 +34,9 @@ import {
 } from "./generated-image-retry";
 import {
     loadTimedWakeSchedules,
-    removeTimedWakeSchedule,
-    type TimedWakeSchedule,
+    removeTimedWakeSchedule,    type TimedWakeSchedule,
 } from "./timed-wake-storage";
+import { cancelProactiveTask } from "./proactive-cloud";
 import {
     getMenstrualPeriodCareEvent,
     hasMenstrualPeriodCareTriggered,
@@ -218,6 +218,8 @@ function pollTimedWakeSchedules(now: number) {
     for (const sched of schedules) {
         if (sched.fireAt > now) continue;
         if (timedWakeFiringSet.has(sched.id)) continue;
+        // 已经登记到云端的，由云端生成+推送，本地不再重复发（免得一次设置收到两条）
+        if (sched.cloudTaskId) continue;
         console.log(`[TimedWake] Firing now for session=${sched.sessionId}`);
         fireTimedWake(sched);
     }
@@ -363,6 +365,8 @@ async function fireFollowUp(sched: { sessionId: string; count: number; delaySec?
 async function fireTimedWake(sched: TimedWakeSchedule) {
     timedWakeFiringSet.add(sched.id);
     removeTimedWakeSchedule(sched.id);
+    // 本地先发了就把云端那条撤掉，避免同一件事发两次
+    if (sched.cloudTaskId) void cancelProactiveTask(sched.cloudTaskId).catch(() => false);
 
     try {
         const sessions = loadChatSessions();

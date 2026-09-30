@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useLayoutEffect, useCallback, useRef, createContext, type CSSProperties, type ReactNode } from "react";
-import { Check, ChevronRight, Clock, Database, FileText, Fingerprint, Globe, HardDrive, Image, Info, KeyRound, Layers, Link2, Loader2, LogOut, MessageSquare, Mic, SlidersHorizontal, UserCircle, Wrench, X } from "lucide-react";
+import { Check, ChevronRight, Clock, Cloud, CloudSun, Database, FileText, Fingerprint, Globe, HardDrive, Image, Info, KeyRound, Layers, Link2, Loader2, LogOut, MessageSquare, Mic, BellRing, SlidersHorizontal, UserCircle, Wrench, X } from "lucide-react";
 import { ConfirmDialog } from "./ui/modal";
 import { useAccount } from "@/lib/account-context";
 import { changeAccountPassword } from "@/lib/account-client";
@@ -17,6 +17,8 @@ import { AboutDeclaration } from "./settings/about-declaration";
 import { BindingManager } from "./settings/binding-manager";
 import { WeixinSettings } from "./settings/weixin-settings";
 import { ToolboxSettings } from "./settings/toolbox-settings";
+import { ProactiveCloudSettings } from "./settings/proactive-cloud-settings";
+import { ProactiveApiSettings } from "./settings/proactive-api-settings";
 import { ModerationCenter } from "./settings/moderation-center";
 import { fetchIsAdmin } from "@/lib/moderation-client";
 import { isSelfHostedModeEnabled } from "@/lib/self-hosting";
@@ -24,6 +26,7 @@ import { PageShell } from "./ui/page-shell";
 import { CardGrid, FeaturedCard, type CardItem, type FeaturedCardItem } from "./ui/card-grid";
 import { Toggle } from "./ui/form";
 import { loadChatAppSettings, saveChatAppSettings } from "@/lib/chat-storage";
+import { clearWeatherCache, getWeatherFeelStatus, feelSummary } from "@/lib/weather";
 import { BINDING_ACCENTS, CONTENT_APP_ACCENTS } from "@/lib/ui-accent-colors";
 
 export const SettingsContext = createContext<{
@@ -41,6 +44,7 @@ type SubPage =
     | "main"
     | "api"
     | "voice"
+    | "proactiveApi"
     | "imageGeneration"
     | "presets"
     | "worldbook"
@@ -50,12 +54,14 @@ type SubPage =
     | "identity"
     | "weixin"
     | "toolbox"
+    | "proactive"
     | "moderation"
     | "about";
 
 const SETTINGS_MENU = [
     { id: "api", icon: HardDrive, label: "API 设置", desc: "大模型接口", iconColor: BINDING_ACCENTS.api },
     { id: "voice", icon: Mic, label: "语音 API", desc: "语音合成", iconColor: BINDING_ACCENTS.voice },
+    { id: "proactiveApi", icon: Cloud, label: "主动消息 API", desc: "云端生成", iconColor: BINDING_ACCENTS.api },
     { id: "imageGeneration", icon: Image, label: "图像生成 API", desc: "模型、参考图与提示词", iconColor: CONTENT_APP_ACCENTS.moments },
     { id: "presets", icon: Fingerprint, label: "预设", desc: "角色预设", iconColor: BINDING_ACCENTS.preset },
     { id: "worldbook", icon: Globe, label: "世界书", desc: "世界观设定", iconColor: BINDING_ACCENTS.worldBook },
@@ -64,6 +70,7 @@ const SETTINGS_MENU = [
     { id: "binding", icon: Link2, label: "配置绑定", desc: "管理全局默认、角色与应用的配置绑定关系", iconColor: BINDING_ACCENTS.identity },
     { id: "weixin", icon: MessageSquare, label: "微信接入", desc: "iLink Bot", iconColor: CONTENT_APP_ACCENTS.chat },
     { id: "toolbox", icon: Wrench, label: "聊天工具箱", desc: "外部工具调用", iconColor: BINDING_ACCENTS.voice },
+    { id: "proactive", icon: BellRing, label: "主动消息", desc: "云端到点主动联系", iconColor: CONTENT_APP_ACCENTS.chat },
     { id: "identity", icon: UserCircle, label: "用户身份", desc: "个人信息", iconColor: BINDING_ACCENTS.identity },
     { id: "about", icon: Info, label: "关于与声明", desc: "版本与协议", iconColor: BINDING_ACCENTS.memory },
 ] as const;
@@ -98,6 +105,9 @@ export function PhoneSettingsApp({ onClose, onNotice }: SettingsPageProps) {
     const [subpageRightActions, setSubpageRightActions] = useState<Record<string, ReactNode>>({});
     const [overrideBack, setOverrideBack] = useState<(() => void) | null>(null);
     const [timeAware, setTimeAware] = useState(true);
+    const [weatherAware, setWeatherAware] = useState(true);
+    const [weatherLocateHint, setWeatherLocateHint] = useState<string | null>(null);
+    const [weatherPreview, setWeatherPreview] = useState<string | null>(null);
     const [promptViewerEnabled, setPromptViewerEnabled] = useState(false);
     const [quickActionEnabled, setQuickActionEnabled] = useState(false);
     const pageBodyRef = useRef<HTMLDivElement | null>(null);
@@ -162,7 +172,7 @@ export function PhoneSettingsApp({ onClose, onNotice }: SettingsPageProps) {
 
     const defaultTitle = currentPage === "main"
         ? "设置"
-        : currentPage === "api" || currentPage === "voice" || currentPage === "imageGeneration" || currentPage === "presets" || currentPage === "worldbook" || currentPage === "regex" || currentPage === "identity"
+        : currentPage === "api" || currentPage === "voice" || currentPage === "proactiveApi" || currentPage === "imageGeneration" || currentPage === "presets" || currentPage === "worldbook" || currentPage === "regex" || currentPage === "identity"
             ? ""
             : currentPage === "moderation"
                 ? "管理中心"
@@ -207,6 +217,56 @@ export function PhoneSettingsApp({ onClose, onNotice }: SettingsPageProps) {
         onNotice(next ? "已开启全局真实时间感知" : "已关闭全局真实时间感知");
     }, [onNotice]);
 
+    const handleWeatherAwareChange = useCallback((next: boolean) => {
+        setWeatherAware(next);
+        saveChatAppSettings({ ...loadChatAppSettings(), weatherAware: next });
+        setWeatherPreview(null);
+        setWeatherLocateHint(null);
+        onNotice(next ? "已开启体感感知" : "已关闭体感感知");
+    }, [onNotice]);
+
+    // 设置页预览：把「会交给模型的原文」显示出来，方便确认没有地名、没有数字。
+    // allowPrompt=false 时不弹定位授权，只用已有缓存。
+    const refreshWeatherPreview = useCallback((allowPrompt: boolean) => {
+        setWeatherPreview(allowPrompt ? "正在定位并获取体感…" : null);
+        void getWeatherFeelStatus(allowPrompt)
+            .then(status => {
+                if (status.state === "ok") {
+                    const minutes = Math.max(0, Math.round((Date.now() - status.feel.updatedAt) / 60000));
+                    const accuracy = status.feel.accuracyM
+                        ? `精度约 ${Math.max(1, Math.round(status.feel.accuracyM / 100) / 10)} 公里`
+                        : "已定位";
+                    const when = minutes <= 0 ? "刚刚" : `${minutes} 分钟前`;
+                    setWeatherLocateHint(`定位成功（${accuracy}，${when}取到数据）`);
+                    setWeatherPreview(`此刻的感觉：${feelSummary(status.feel.spec)}`);
+                    return;
+                }
+                setWeatherPreview(null);
+                setWeatherLocateHint(status.state === "idle"
+                    ? "尚未定位。首次聊天时会向你请求一次定位授权；也可以点右侧按钮立刻试一次"
+                    : status.state === "denied"
+                        ? "定位被拒绝。iOS 可在 系统设置 → 隐私与安全性 → 定位服务 里允许；桌面浏览器点地址栏左边的图标改权限，然后点「重新定位」"
+                        : status.state === "ignored"
+                            ? "定位授权弹窗没被处理（可能被忽略了）。点「重新定位」再点一次「允许」"
+                            : status.state === "unsupported"
+                                ? "当前环境不支持定位（需要 HTTPS 且浏览器允许定位）"
+                                : status.state === "error"
+                                    ? "已定位，但天气服务这次没返回数据，稍后再试"
+                                    : status.state === "disabled"
+                                        ? null
+                                        : "定位服务暂时不可用（可能超时），点「重新定位」再试一次");
+            })
+            .catch(() => {
+                setWeatherPreview(null);
+                setWeatherLocateHint("获取体感失败，稍后再试");
+            });
+    }, []);
+
+    const handleWeatherRelocate = useCallback(() => {
+        clearWeatherCache();
+        refreshWeatherPreview(true);
+    }, [refreshWeatherPreview]);
+
     const handlePromptViewerChange = useCallback((next: boolean) => {
         setPromptViewerEnabled(next);
         saveChatAppSettings({ ...loadChatAppSettings(), promptViewerEnabled: next });
@@ -245,6 +305,8 @@ export function PhoneSettingsApp({ onClose, onNotice }: SettingsPageProps) {
                 return <ApiSettings />;
             case "voice":
                 return <VoiceSettings />;
+            case "proactiveApi":
+                return <ProactiveApiSettings onNotice={onNotice} />;
             case "imageGeneration":
                 return <ImageGenerationSettings />;
             case "presets":
@@ -261,6 +323,8 @@ export function PhoneSettingsApp({ onClose, onNotice }: SettingsPageProps) {
                 return <WeixinSettings onOpenDataManagement={() => setCurrentPage("data")} />;
             case "toolbox":
                 return <ToolboxSettings />;
+            case "proactive":
+                return <ProactiveCloudSettings onNotice={onNotice} />;
             case "moderation":
                 return <ModerationCenter onNotice={onNotice} />;
             case "identity":
@@ -290,9 +354,12 @@ export function PhoneSettingsApp({ onClose, onNotice }: SettingsPageProps) {
     useEffect(() => {
         const settings = loadChatAppSettings();
         setTimeAware(settings.timeAware !== false);
+        const weatherOn = settings.weatherAware !== false;
+        setWeatherAware(weatherOn);
         setPromptViewerEnabled(settings.promptViewerEnabled === true);
         setQuickActionEnabled(settings.quickActionEnabled === true);
-    }, []);
+        if (weatherOn) refreshWeatherPreview(false);
+    }, [refreshWeatherPreview]);
 
     // Listen for mascot navigation mode (e.g. jump to worldbook/regex tab)
     useEffect(() => {
@@ -334,7 +401,7 @@ export function PhoneSettingsApp({ onClose, onNotice }: SettingsPageProps) {
                         <CardGrid
                             label="API Config"
                             labelClassName="settings-menu-section-title"
-                            items={SETTINGS_MENU.filter(item => ["api", "voice"].includes(item.id)).map(makeCardItem)}
+                            items={SETTINGS_MENU.filter(item => ["api", "voice", "proactiveApi"].includes(item.id)).map(makeCardItem)}
                         />
                         <div className="settings-data-rules-section">
                             <h3 className="settings-menu-section-title">Data & Rules</h3>
@@ -354,7 +421,7 @@ export function PhoneSettingsApp({ onClose, onNotice }: SettingsPageProps) {
                         <CardGrid
                             label="Connections"
                             labelClassName="settings-menu-section-title"
-                            items={SETTINGS_MENU.filter(item => ["weixin", "toolbox"].includes(item.id)).map(makeCardItem)}
+                            items={SETTINGS_MENU.filter(item => ["weixin", "toolbox", "proactive"].includes(item.id)).map(makeCardItem)}
                         />
                         <div className="settings-realtime-section">
                             <h3 className="settings-menu-section-title">Realtime</h3>
@@ -368,6 +435,37 @@ export function PhoneSettingsApp({ onClose, onNotice }: SettingsPageProps) {
                                 </div>
                                 <Toggle checked={timeAware} onChange={handleTimeAwareChange} className="settings-toggle-control" />
                             </div>
+                            <div className="app-card card-featured settings-toggle-card">
+                                <span className="card-icon" style={realtimeIconStyle}>
+                                    <CloudSun size={22} strokeWidth={1.75} />
+                                </span>
+                                <div className="card-featured-body">
+                                    <div className="card-featured-label">体感感知</div>
+                                    <div className="card-featured-desc">让角色知道你此刻冷热干湿，在开场问候里自然带一句（不含地名与数字，每天开场只提一次）</div>
+                                    {weatherAware && weatherLocateHint ? (
+                                        <div className="card-featured-desc settings-weather-hint">{weatherLocateHint}</div>
+                                    ) : null}
+                                </div>
+                                {weatherAware ? (
+                                    <button
+                                        type="button"
+                                        className="ui-btn ui-btn-outline settings-weather-relocate"
+                                        onClick={handleWeatherRelocate}
+                                    >
+                                        重新定位
+                                    </button>
+                                ) : null}
+                                <Toggle checked={weatherAware} onChange={handleWeatherAwareChange} className="settings-toggle-control" />
+                            </div>
+                            {weatherAware && weatherPreview ? (
+                                <div className="app-card card-featured settings-weather-preview-card">
+                                    <div className="card-featured-body">
+                                        <div className="card-featured-label">当前体感</div>
+                                        <div className="card-featured-desc">这一行就是给模型的事实标签（不含地名与数字），措辞由它自己写</div>
+                                        <pre className="settings-weather-preview">{weatherPreview}</pre>
+                                    </div>
+                                </div>
+                            ) : null}
                         </div>
                         {isAdmin ? (
                             <div className="settings-moderation-section">

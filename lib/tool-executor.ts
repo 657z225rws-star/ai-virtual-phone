@@ -68,6 +68,7 @@ import {
     searchLocalDataRecords,
 } from "./local-data-fs";
 import { makeTimedWakeId, saveTimedWakeSchedule } from "./timed-wake-storage";
+import { isProactiveCloudReady, loadProactiveCloudConfig, registerProactiveTask, syncProactiveMaterial } from "./proactive-cloud";
 import { resolveUserIdentity } from "./settings-storage";
 import { attachAbortSignal, isAbortError, throwIfAborted } from "./abort-utils";
 
@@ -2735,7 +2736,7 @@ async function executeTimedWakeTool(call: ToolCall, context?: ToolExecutionConte
 
     const delayMinutes = numberArg(call.args.delayMinutes ?? call.args.delay_minutes, 1, 10080, 15);
     const now = Date.now();
-    saveTimedWakeSchedule({
+    const schedule = {
         id: makeTimedWakeId(context.sessionId),
         sessionId: context.sessionId,
         characterId: context.characterId,
@@ -2743,12 +2744,38 @@ async function executeTimedWakeTool(call: ToolCall, context?: ToolExecutionConte
         fireAt: now + delayMinutes * 60 * 1000,
         delayMinutes,
         intent,
-    });
+    };
+    saveTimedWakeSchedule(schedule);
+
+    // 顺手在云端登记一份：这样 app 被系统杀掉也照样到点（消息会推到手机并在打开时落进聊天）。
+    // 登记成功就把本地条目标记成"云端负责"，本地轮询不再重复发；失败也不影响原有行为。
+    let cloudNote = "";
+    try {
+        const cloudConfig = loadProactiveCloudConfig();
+        if (isProactiveCloudReady(cloudConfig)) {
+            const synced = await syncProactiveMaterial(context.characterId, cloudConfig);
+            if (synced.ok) {
+                const registered = await registerProactiveTask({
+                    taskId: schedule.id,
+                    characterId: context.characterId,
+                    fireAt: schedule.fireAt,
+                    intent: schedule.intent,
+                    kind: "once",
+                }, cloudConfig);
+                if (registered.ok) {
+                    saveTimedWakeSchedule({ ...schedule, cloudTaskId: schedule.id });
+                    cloudNote = "（已同步到云端：到时候即使 app 关着也会按时发）";
+                }
+            }
+        }
+    } catch {
+        /* 云端登记失败就只靠本地定时，不影响这次设置 */
+    }
 
     return {
         name: "稍后主动联系",
         success: true,
-        data: `已设置稍后主动联系：约 ${delayMinutes} 分钟后到点。\n目的：${intent}`,
+        data: `已设置稍后主动联系：约 ${delayMinutes} 分钟后到点。\n目的：${intent}${cloudNote}`,
         userNotice: `已设置 ${delayMinutes} 分钟后主动联系`,
     };
 }

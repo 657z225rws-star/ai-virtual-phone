@@ -12,6 +12,12 @@ export type TimedWakeSchedule = {
     createdAt: number;
     delayMinutes: number;
     intent: string;
+    /**
+     * 已在云端登记的任务 id（值等于本 id）。
+     * 有它就说明这次唤醒交给云端了：本地轮询不再重复发，避免 app 开着时发两条。
+     * 云端消息到达后本条目会被自动清掉（见 lib/proactive-cloud.ts 的 pullProactiveInbox）。
+     */
+    cloudTaskId?: string;
 };
 
 export function makeTimedWakeId(sessionId: string): string {

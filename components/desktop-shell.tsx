@@ -5,6 +5,7 @@ import { Component, memo, useCallback, useEffect, useInsertionEffect, useLayoutE
 import { updateStatusBarTone } from "@/lib/bg-tone";
 import { startDiaryEntryTimerService, stopDiaryEntryTimerService } from "@/lib/diary-entry-timer-service";
 import { startFollowUpService, stopFollowUpService } from "@/lib/follow-up-service";
+import { startProactiveCloudService } from "@/lib/proactive-cloud";
 import { startMomentsService, stopMomentsService } from "@/lib/moments-engine";
 import { bgTimerCleanup } from "@/lib/bg-timer";
 import { PhoneThemeApp } from "@/components/phone-theme-app";
@@ -1529,6 +1530,7 @@ export function DesktopShell({ initialThemeProfile, initialThemeAssets }: Deskto
     let cancelled = false;
     let servicesStarted = false;
     let cleanupWeixinCloudRealtimeSync: (() => void) | null = null;
+    let stopProactiveCloud: (() => void) | null = null;
 
     void (async () => {
       try {
@@ -1560,6 +1562,8 @@ export function DesktopShell({ initialThemeProfile, initialThemeAssets }: Deskto
 
       if (cancelled) return;
       startFollowUpService();
+      // 云端主动消息：可见时每分钟拉一次收件箱（app 关着时由云端负责生成与推送）
+      stopProactiveCloud = startProactiveCloudService();
       startMomentsService();
       startDiaryEntryTimerService();
       const stopWeixinCloudRealtimeSync = startWeixinCloudRealtimeSync();
@@ -1570,6 +1574,7 @@ export function DesktopShell({ initialThemeProfile, initialThemeAssets }: Deskto
     return () => {
       cancelled = true;
       cleanupWeixinCloudRealtimeSync?.();
+      stopProactiveCloud?.();
       if (servicesStarted) {
         stopFollowUpService();
         stopMomentsService();

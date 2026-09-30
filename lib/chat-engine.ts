@@ -55,6 +55,8 @@ import { formatCoreMemories, formatLongTermMemories } from "./memory-injector";
 import { maybeRunSummarization } from "./memory-summarizer";
 import { prepareShortTermContext } from "./short-term-assembler";
 import { buildMusicAtmosphere } from "./listen-together";
+import { getWeatherFeelPromptBlock } from "./weather";
+import { buildRealtimeContextBlock, isWebSearchCapabilityEnabled } from "./realtime-context";
 import { parseActionTags, dispatchActions } from "./action-parser";
 import { findEnabledToolForSchema, getEnabledTools, type EnabledTool } from "./tool-storage";
 import { formatToolsForPrompt, formatToolSchema } from "./tool-prompt";
@@ -1948,6 +1950,28 @@ export async function buildChatPromptMessages(
         if (musicAtmosphere) {
             llmMessages.push({ role: "system", content: musicAtmosphere });
         }
+    }
+    // 实时体感注入：只在「对话开场」（跨天，或隔了 6 小时以上没聊）时注入一次，
+    // 让角色像同城朋友一样把天气化进开场问候，而不是每句都蹭天气。
+    // 注入内容里没有地名、没有数字；措辞由模型自己写。同样放在消息数组尾部，
+    // 不破坏 system prompt 前缀缓存；拿不到位置就静默跳过，最多等 PROMPT_WAIT_MS。
+    if (resolvedAppId === "chat" && !session.isGroup && !isOfflineMode) {
+        try {
+            const weatherBlock = await getWeatherFeelPromptBlock({ history, sessionId: session.id, now });
+            if (weatherBlock) {
+                llmMessages.push({ role: "system", content: weatherBlock });
+            }
+        } catch {
+            /* 体感属于锦上添花，任何失败都不影响聊天 */
+        }
+    }
+    // 现实世界与时效：把当前年月日摆在它面前，并压住"拿往年旧闻当今年"的毛病。
+    // 跟随「真实时间感知」开关；同样放消息数组尾部，不破坏 system prompt 前缀缓存。
+    if (resolvedAppId === "chat" && !session.isGroup && !promptProfile?.output && loadChatAppSettings().timeAware !== false) {
+        llmMessages.push({
+            role: "system",
+            content: buildRealtimeContextBlock(promptTimeContext.timeContext, isWebSearchCapabilityEnabled()),
+        });
     }
     if (promptProfile?.output === "plain_text") {
         llmMessages.push({

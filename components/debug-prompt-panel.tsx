@@ -13,7 +13,7 @@ import {
     type MomentsPreviewResult,
 } from "@/lib/moments-engine";
 import { previewCalendarPromptPayload } from "@/lib/calendar-engine";
-import { CHAT_APP_SETTINGS_UPDATED_EVENT, loadChatAppSettings, loadChatContacts, loadChatMessages, loadChatSessions, type ChatSession } from "@/lib/chat-storage";
+import { CHAT_APP_SETTINGS_UPDATED_EVENT, hydrateChatStorage, loadChatAppSettings, loadChatContacts, loadChatMessages, loadChatSessions, type ChatSession } from "@/lib/chat-storage";
 import { loadCharacters } from "@/lib/character-storage";
 import { getAllPosts } from "@/lib/moments-storage";
 import type { LLMMessage } from "@/lib/llm-prompt-assembler";
@@ -160,6 +160,16 @@ export function DebugPromptPanel() {
     const [adventureWorldId, setAdventureWorldId] = useState<string>("");
     const [adventureStorageVersion, setAdventureStorageVersion] = useState(0);
     const [adventureInstructionMode, setAdventureInstructionMode] = useState<"turn" | "exit">("turn");
+    // 聊天列表来自 IndexedDB 水合后的内存缓存；水合完成前 loadChatSessions() 是空的，
+    // 所以这里主动水合并用一个版本号触发重算，避免下拉永远是"选择聊天…"。
+    const [chatStorageVersion, setChatStorageVersion] = useState(0);
+    useEffect(() => {
+        let cancelled = false;
+        void hydrateChatStorage().then(() => {
+            if (!cancelled) setChatStorageVersion(version => version + 1);
+        });
+        return () => { cancelled = true; };
+    }, []);
 
     // Shared
     const [error, setError] = useState<string | null>(null);
@@ -168,6 +178,7 @@ export function DebugPromptPanel() {
     const scrollRef = useRef<HTMLDivElement>(null);
     const chatSessionOptions = useMemo(() => {
         if (typeof window === "undefined") return [] as { session: ChatSession; label: string }[];
+        void chatStorageVersion; // 水合版本号：仅作为失效键，水合完成后重算会话列表
         const sessions = loadChatSessions();
         const chars = loadCharacters();
         const charNameById = new Map(chars.map(c => [c.id, c.name]));
@@ -187,7 +198,7 @@ export function DebugPromptPanel() {
                 label: charNameById.get(session.contactId) || session.alias || session.contactId,
             };
         });
-    }, [enabled, chatState?.session?.id]);
+    }, [enabled, chatState?.session?.id, chatStorageVersion]);
     const activeChatSession = chatSessionOptions.find(option => option.session.id === selectedChatSessionId)?.session
         ?? chatState?.session
         ?? null;

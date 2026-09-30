@@ -1431,6 +1431,30 @@
 .settings-toggle-control {
   flex: 0 0 auto;
 }
+.settings-weather-relocate {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+.settings-weather-hint {
+  color: var(--c-icon-active);
+  opacity: 0.9;
+}
+.settings-weather-preview-card {
+  cursor: default;
+  margin-top: 10px;
+}
+.settings-weather-preview {
+  margin-top: 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(127, 127, 127, 0.12);
+  color: var(--c-text);
+  font-size: calc(11px*var(--app-text-scale,1));
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: inherit;
+}
 .settings-tools-menu {
   margin-top: 10px;
 }
