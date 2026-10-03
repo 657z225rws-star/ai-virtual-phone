@@ -349,7 +349,7 @@ export function resolveCloudLlm(
 
     return {
         ok: true,
-        llm: { apiUrl, apiKey: entry.apiKey.trim(), model: entry.model.trim(), temperature: 0.95, maxTokens: 400 },
+        llm: { apiUrl, apiKey: entry.apiKey.trim(), model: entry.model.trim(), temperature: 0.95, maxTokens: 2000 },
     };
 }
 
