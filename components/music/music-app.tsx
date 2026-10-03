@@ -472,14 +472,12 @@ function RecommendTab({ formatTime, onPlayNetease, onPlayAll, onOpenPlaylist }: 
                     {dailySongs.length > 0 && (
                         <MusicSection
                             title="每日推荐"
+                            titleExtra={<span className="music-playlist-detail-count">{dailySongs.length}首</span>}
                             action={
-                                <span className="music-section-action">
-                                    {dailySongs.length} 首
-                                    <button className="music-playlist-play-all" onClick={() => onPlayAll(dailySongs)}>
-                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z" /></svg>
-                                        <span>播放全部</span>
-                                    </button>
-                                </span>
+                                <button className="music-playlist-play-all" onClick={() => onPlayAll(dailySongs)}>
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z" /></svg>
+                                    <span>播放全部</span>
+                                </button>
                             }
                         >
                             <div className="music-list music-list-compact">
@@ -601,11 +599,11 @@ function MineTab({ player, formatTime, onPlayNetease, onPlayAll, activePlaylist,
     );
 }
 
-function MusicSection({ title, action, children }: { title: string; action?: ReactNode; children: ReactNode }) {
+function MusicSection({ title, action, titleExtra, children }: { title: string; action?: ReactNode; titleExtra?: ReactNode; children: ReactNode }) {
     return (
         <section className="music-section">
             <div className="music-section-head">
-                <h3>{title}</h3>
+                <h3>{title}{titleExtra}</h3>
                 {action && <span>{action}</span>}
             </div>
             {children}

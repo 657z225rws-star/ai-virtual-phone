@@ -220,7 +220,7 @@ export type FeelSpec = {
     moisture: string | null;
     /** 风：狂风 / 风很大 / 风大 / 有风 / 没风；普通时留空 */
     wind: string | null;
-    /** 降水：下着小雨 / 刚停过，地上还湿 / 在打雷 …… */
+    /** 降水：下着小雨 / 雨刚停 / 在打雷 …… */
     precipitation: string | null;
     /** 天：晴 / 多云 / 阴 / 有雾 */
     sky: string | null;
@@ -274,8 +274,10 @@ function precipitationLabel(weather: RawWeather, now: Date): string | null {
     if ([71, 73, 77, 85].includes(code)) return "在下雪";
     if ([75, 86].includes(code)) return "下着大雪";
     if (weather.precipNow > 0) return "在下雨";
-    if (weather.precipPast3h >= 0.3) return now.getHours() < 11 ? "昨晚下过，地上还湿" : "刚停过，地上还湿";
-    if (weather.precipPast6h >= 0.8) return "地上还是湿的";
+    // 雨已经停了的几种说法：带主语，让模型一眼看出在说什么；
+    // "地上湿不湿"这类延伸描述不写死，留给模型自己发挥
+    if (weather.precipPast3h >= 0.3) return now.getHours() < 11 ? "昨晚下过雨" : "雨刚停";
+    if (weather.precipPast6h >= 0.8) return "雨停了有一会了";
     return null;
 }
 
@@ -497,9 +499,9 @@ const PRECIP_START_TEXT: Record<string, string> = {
     "在打雷": "外面打雷了",
     "在下雪": "外面开始下雪了",
     "下着大雪": "外面下起大雪了",
-    "昨晚下过，地上还湿": "刚下过雨，地上还湿着",
-    "刚停过，地上还湿": "雨刚停，地上还湿着",
-    "地上还是湿的": "地上还是湿的",
+    "昨晚下过雨": "昨晚下过雨",
+    "雨刚停": "雨刚停了",
+    "雨停了有一会了": "雨已经停了一阵子",
 };
 
 const SKY_CHANGE_TEXT: Record<string, string> = {

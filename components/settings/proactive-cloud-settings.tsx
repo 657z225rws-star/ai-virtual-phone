@@ -6,7 +6,7 @@
 // 「连接并验证 / 开启推送 / 发测试推送 / 立即同步材料 / 刷新诊断」全部是排障用的，
 // 收进「高级与诊断」，默认折叠、平时不用碰。
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { BellRing, CloudUpload, Loader2, RefreshCw, Send, ShieldCheck } from "lucide-react";
 import { Alert } from "@/components/ui/feedback";
 import { Input, Select, Toggle } from "@/components/ui/form";
@@ -127,13 +127,37 @@ export function ProactiveCloudSettings({ onNotice }: { onNotice: (msg: string) =
         }
     }, [applyConfig, enablePush, onNotice, refreshPushStatus, verifyCloud]);
 
+    /**
+     * 改动角色的开关/间隔后，要把云端任务对齐（登记/清理/改间隔）。
+     * 以前只有重开 app 或点「立即同步材料」才会对齐——设置完就干等着，云端根本没有任务，自然不会发。
+     * 这里做 1 秒防抖：连续改多个选项只对齐一次；失败原因弹出来，别静默吞掉。
+     */
+    const reconcileTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    useEffect(() => () => {
+        if (reconcileTimerRef.current) clearTimeout(reconcileTimerRef.current);
+    }, []);
+    const scheduleReconcile = useCallback(() => {
+        if (!isProactiveCloudReady(loadProactiveCloudConfig())) return;
+        if (reconcileTimerRef.current) clearTimeout(reconcileTimerRef.current);
+        reconcileTimerRef.current = setTimeout(() => {
+            reconcileIntervalTasks(loadProactiveCloudConfig())
+                .then(result => {
+                    if (result.reasons.length > 0) {
+                        onNotice(`主动消息任务登记失败：${result.reasons.join("；")}`);
+                    }
+                })
+                .catch(() => {});
+        }, 1000);
+    }, [onNotice]);
+
     const updateCharacter = useCallback((characterId: string, patch: Partial<{ enabled: boolean; intervalMinutes: number }>) => {
         const current = loadProactiveCloudConfig();
         const existing = current.perCharacter[characterId] || { enabled: false, intervalMinutes: 0 };
         applyConfig({
             perCharacter: { ...current.perCharacter, [characterId]: { ...existing, ...patch } },
         });
-    }, [applyConfig]);
+        scheduleReconcile();
+    }, [applyConfig, scheduleReconcile]);
 
     const runAdvanced = useCallback(async (name: string, task: () => Promise<string>) => {
         setBusy(name);

@@ -461,7 +461,6 @@ export function PhoneSettingsApp({ onClose, onNotice }: SettingsPageProps) {
                                 <div className="app-card card-featured settings-weather-preview-card">
                                     <div className="card-featured-body">
                                         <div className="card-featured-label">当前体感</div>
-                                        <div className="card-featured-desc">这一行就是给模型的事实标签（不含地名与数字），措辞由它自己写</div>
                                         <pre className="settings-weather-preview">{weatherPreview}</pre>
                                     </div>
                                 </div>

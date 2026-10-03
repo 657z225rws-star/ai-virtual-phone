@@ -10,6 +10,11 @@ const SWIPE_DISMISS_SPEED = 1.5; // px/ms
 const SWIPE_DISMISS_ARMING_X = 88;
 const SWIPE_INERTIA_MS = 140;
 const SWIPE_VELOCITY_RECENT_MS = 180;
+// 与 music.css 中 .music-float / [data-expanded] 的尺寸保持一致
+const COLLAPSED_W = 72;
+const COLLAPSED_H = 72;
+const EXPANDED_W = 260;
+const EXPANDED_H = 84;
 
 export default function MusicFloat({ hidden }: { hidden?: boolean }) {
     const player = useMusicControlsOptional();
@@ -20,7 +25,7 @@ export default function MusicFloat({ hidden }: { hidden?: boolean }) {
         startX: number; startY: number; origX: number; origY: number;
         lastX: number; lastTime: number;
         lastLeftSpeed: number; lastLeftSpeedTime: number;
-        moved: boolean; startedOnInfo: boolean;
+        moved: boolean; startedOnInfo: boolean; dragging: boolean;
     }>({
         pointerId: null,
         active: false,
@@ -34,9 +39,11 @@ export default function MusicFloat({ hidden }: { hidden?: boolean }) {
         lastLeftSpeedTime: 0,
         moved: false,
         startedOnInfo: false,
+        dragging: false,
     });
     const dismissTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const [expanded, setExpanded] = useState(false);
+    const [dragging, setDragging] = useState(false);
     const [dismissing, setDismissing] = useState(false);
 
     const clampPos = useCallback((x: number, y: number) => {
@@ -51,6 +58,31 @@ export default function MusicFloat({ hidden }: { hidden?: boolean }) {
             x: Math.max(0, Math.min(x, pw - ew)),
             y: Math.max(0, Math.min(y, ph - eh)),
         };
+    }, []);
+
+    // 展开/收起按悬浮球所在半屏对齐：左半屏左对齐（朝右生长）、右半屏右对齐（朝左生长），
+    // 保证卡片始终完整留在屏幕内，不会超出屏幕。
+    const toggleExpanded = useCallback(() => {
+        setExpanded(prev => {
+            const next = !prev;
+            setPos(p => {
+                const el = floatRef.current;
+                const parent = el?.closest("[data-ui='phone-screen']") as HTMLElement | null;
+                if (!el || !parent) return p;
+                const pw = parent.clientWidth;
+                const ph = parent.clientHeight;
+                const curW = prev ? EXPANDED_W : COLLAPSED_W;
+                const nextW = next ? EXPANDED_W : COLLAPSED_W;
+                const nextH = next ? EXPANDED_H : COLLAPSED_H;
+                const alignLeft = p.x + curW / 2 < pw / 2;
+                const nx = alignLeft
+                    ? Math.max(0, Math.min(p.x, pw - nextW))
+                    : Math.max(0, Math.min(p.x + curW - nextW, pw - nextW));
+                const ny = Math.max(0, Math.min(p.y, ph - nextH));
+                return { x: nx, y: ny };
+            });
+            return next;
+        });
     }, []);
 
     const dismissFloat = useCallback(() => {
@@ -88,6 +120,7 @@ export default function MusicFloat({ hidden }: { hidden?: boolean }) {
             lastLeftSpeedTime: 0,
             moved: false,
             startedOnInfo: Boolean(target.closest(".music-float-info")),
+            dragging: false,
         };
     }, [pos]);
 
@@ -98,6 +131,7 @@ export default function MusicFloat({ hidden }: { hidden?: boolean }) {
         const dy = e.clientY - d.startY;
         if (Math.abs(dx) > DRAG_START_THRESHOLD || Math.abs(dy) > DRAG_START_THRESHOLD) d.moved = true;
         if (d.moved) {
+            if (!d.dragging) { d.dragging = true; setDragging(true); }
             const nextPos = clampPos(d.origX + dx, d.origY + dy);
             const now = performance.now();
             const dt = Math.max(1, now - d.lastTime);
@@ -121,6 +155,7 @@ export default function MusicFloat({ hidden }: { hidden?: boolean }) {
         }
         d.active = false;
         d.pointerId = null;
+        if (d.dragging) { d.dragging = false; setDragging(false); }
         const dx = e.clientX - d.startX;
         const dy = e.clientY - d.startY;
         const finalPos = clampPos(d.origX + dx, d.origY + dy);
@@ -152,12 +187,9 @@ export default function MusicFloat({ hidden }: { hidden?: boolean }) {
                 return;
             }
 
-            setExpanded(prev => {
-                requestAnimationFrame(() => setPos(p => clampPos(p.x, p.y)));
-                return !prev;
-            });
+            toggleExpanded();
         }
-    }, [player, clampPos, dismissFloat]);
+    }, [player, clampPos, dismissFloat, toggleExpanded]);
 
     const handlePointerUp = useCallback((e: React.PointerEvent) => finishPointer(e), [finishPointer]);
     const handlePointerCancel = useCallback((e: React.PointerEvent) => finishPointer(e), [finishPointer]);
@@ -171,6 +203,7 @@ export default function MusicFloat({ hidden }: { hidden?: boolean }) {
             ref={floatRef}
             className="music-float"
             {...(expanded ? { "data-expanded": "" } : {})}
+            {...(dragging ? { "data-dragging": "" } : {})}
             {...(dismissing ? { "data-dismissing": "" } : {})}
             style={{ left: pos.x, top: pos.y }}
             onPointerDown={handlePointerDown}

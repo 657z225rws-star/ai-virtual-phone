@@ -1076,7 +1076,7 @@
     touch-action: none;
     cursor: grab;
     user-select: none;
-    transition: width 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275), height 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275), transform 0.25s ease-out, opacity 0.25s ease-out;
+    transition: width 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275), height 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275), left 0.3s cubic-bezier(0.22, 1, 0.36, 1), top 0.3s cubic-bezier(0.22, 1, 0.36, 1), transform 0.25s ease-out, opacity 0.25s ease-out;
     animation: music-float-in 0.5s var(--ease-out);
 
     /* Layout */
@@ -1101,6 +1101,11 @@
     transform: translateX(-120%) scale(0.8);
     opacity: 0;
     pointer-events: none;
+}
+
+/* 拖拽中不过渡 left/top，否则跟手会拖沓 */
+.music-float[data-dragging] {
+    transition: width 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275), height 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275), transform 0.25s ease-out, opacity 0.25s ease-out;
 }
 
 .music-float[data-expanded] {
@@ -1546,13 +1551,6 @@
 .music-section-head span {
     font-size: calc(9.9px*var(--app-text-scale,1));
     color: var(--c-music-accent);
-}
-
-/* 区块标题行右侧的组合动作区（如"每日推荐"的 首数 + 播放全部按钮） */
-.music-section-head .music-section-action {
-    display: flex;
-    align-items: center;
-    gap: 8px;
 }
 
 /* 按钮内文字不受 .music-section-head span 的标题配色影响 */
