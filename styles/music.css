@@ -1553,6 +1553,38 @@
     color: var(--c-music-accent);
 }
 
+/* 区块标题内嵌的首数（如“每日推荐”）：与私人FM歌单名同款 8px 间距 */
+.music-section-head h3 .music-playlist-detail-count {
+    margin-left: 8px;
+}
+
+/* 区块标题行右侧的组合容器：动作文字 + 可收起按钮 */
+.music-section-head-right {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.music-section-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    padding: 0;
+    border: none;
+    background: none;
+    color: var(--c-music-text);
+    opacity: 0.55;
+    cursor: pointer;
+    border-radius: 50%;
+}
+
+.music-section-toggle:active {
+    opacity: 1;
+    background: rgba(128, 128, 128, 0.15);
+}
+
 /* 按钮内文字不受 .music-section-head span 的标题配色影响 */
 .music-section-head .music-playlist-play-all span {
     font-size: calc(10.8px*var(--app-text-scale,1));

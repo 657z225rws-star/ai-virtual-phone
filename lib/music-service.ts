@@ -482,6 +482,44 @@ export async function getPersonalizedPlaylists(limit = 12): Promise<NeteasePlayl
     } catch { return []; }
 }
 
+/** 随机热门歌单（/top/playlist 分页随机跳页）：每次调用返回不同的一批，供「更多灵感」换一批用 */
+let lastRandomHotOffset = -1;
+export async function getRandomHotPlaylists(limit = 9): Promise<NeteasePlaylist[]> {
+    const base = neteaseBase();
+    if (!base) return [];
+    try {
+        const fetchPage = (offset: number): Promise<any> => {
+            if (neteaseApiKind() === "sullyos") {
+                return neteaseWorkerRequest("top/playlist", { limit, offset, order: "hot" });
+            }
+            return fetch(withNeteaseParams(`${base}/top/playlist?limit=${limit}&offset=${offset}&order=hot&timestamp=${Date.now()}`)).then(r => r.json());
+        };
+        let data = await fetchPage(0);
+        const total = data?.total || 0;
+        if (total > limit) {
+            // 网易云对过深的分页会截断，偏移上限封顶 900
+            const maxOffset = Math.min(total - limit, 900);
+            const pages = Math.max(1, Math.floor(maxOffset / limit));
+            let page = Math.floor(Math.random() * pages);
+            let offset = page * limit;
+            if (offset === lastRandomHotOffset && pages > 1) {
+                page = (page + 1) % pages;
+                offset = page * limit;
+            }
+            lastRandomHotOffset = offset;
+            if (offset > 0) data = await fetchPage(offset);
+        }
+        const list = data?.playlists || [];
+        return list.map((p: any) => ({
+            id: p.id,
+            name: p.name,
+            coverUrl: secureHttpUrl(p.picUrl || p.coverImgUrl),
+            trackCount: p.trackCount || 0,
+            creator: p.creator?.nickname || "",
+        }));
+    } catch { return []; }
+}
+
 export async function getRecommendResource(): Promise<NeteasePlaylist[]> {
     const base = neteaseBase();
     if (!base) return [];

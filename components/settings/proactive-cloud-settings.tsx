@@ -28,16 +28,6 @@ import {
     type ProactiveDiagnostics,
 } from "@/lib/proactive-cloud";
 
-const INTERVAL_OPTIONS = [
-    { value: 0, label: "不自动发（只用手动的稍后发送）" },
-    { value: 30, label: "每 30 分钟" },
-    { value: 60, label: "每 1 小时" },
-    { value: 120, label: "每 2 小时" },
-    { value: 180, label: "每 3 小时" },
-    { value: 360, label: "每 6 小时" },
-    { value: 720, label: "每 12 小时" },
-];
-
 const HOUR_OPTIONS = Array.from({ length: 24 }, (_, hour) => ({
     value: hour,
     label: `${String(hour).padStart(2, "0")}:00`,
@@ -54,6 +44,7 @@ export function ProactiveCloudSettings({ onNotice }: { onNotice: (msg: string) =
     const [busy, setBusy] = useState<string | null>(null);
     const [advanced, setAdvanced] = useState(false);
     const [diagnostics, setDiagnostics] = useState<ProactiveDiagnostics | null>(null);
+    const [intervalDrafts, setIntervalDrafts] = useState<Record<string, string>>({});
 
     const applyConfig = useCallback((patch: Partial<ProactiveCloudConfig>) => {
         const next = patchProactiveCloudConfig(patch);
@@ -259,12 +250,27 @@ export function ProactiveCloudSettings({ onNotice }: { onNotice: (msg: string) =
                                 <Toggle checked={settings.enabled} onChange={value => updateCharacter(character.id, { enabled: value })} />
                             </div>
                             {settings.enabled ? (
-                                <Select
-                                    value={String(settings.intervalMinutes)}
-                                    onChange={event => updateCharacter(character.id, { intervalMinutes: Number(event.target.value) })}
-                                >
-                                    {INTERVAL_OPTIONS.map(item => <option key={item.value} value={item.value}>{item.label}</option>)}
-                                </Select>
+                                <label className="flex items-center gap-2">
+                                    <span className="menu-desc !mt-0 whitespace-nowrap">每</span>
+                                    <Input
+                                        type="number"
+                                        step="any"
+                                        min={0.02}
+                                        max={168}
+                                        inputMode="decimal"
+                                        value={intervalDrafts[character.id] ?? (settings.intervalMinutes > 0 ? String(settings.intervalMinutes / 60) : "")}
+                                        placeholder="0.5"
+                                        onChange={event => {
+                                            const raw = event.target.value;
+                                            setIntervalDrafts(prev => ({ ...prev, [character.id]: raw }));
+                                            const hours = Number(raw);
+                                            const minutes = Number.isFinite(hours) && hours > 0 ? Math.min(10080, Math.round(hours * 60)) : 0;
+                                            updateCharacter(character.id, { intervalMinutes: minutes });
+                                        }}
+                                        style={{ width: 88, textAlign: "center" }}
+                                    />
+                                    <span className="menu-desc !mt-0">小时主动发一次</span>
+                                </label>
                             ) : null}
                         </div>
                     );
