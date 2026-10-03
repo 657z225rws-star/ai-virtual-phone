@@ -1548,6 +1548,19 @@
     color: var(--c-music-accent);
 }
 
+/* 区块标题行右侧的组合动作区（如"每日推荐"的 首数 + 播放全部按钮） */
+.music-section-head .music-section-action {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+/* 按钮内文字不受 .music-section-head span 的标题配色影响 */
+.music-section-head .music-playlist-play-all span {
+    font-size: calc(10.8px*var(--app-text-scale,1));
+    color: var(--c-music-text);
+}
+
 .music-list-compact {
     flex: none;
     overflow: visible;

@@ -292,6 +292,7 @@ export default function MusicApp({ onClose }: Props) {
                 <RecommendTab
                     formatTime={formatTime}
                     onPlayNetease={handlePlayNetease}
+                    onPlayAll={handlePlayAllNetease}
                     onOpenPlaylist={(playlist) => {
                         setActivePlaylist(playlist);
                         setTab("mine");
@@ -424,9 +425,10 @@ export default function MusicApp({ onClose }: Props) {
 }
 
 // ── Recommend Tab ──
-function RecommendTab({ formatTime, onPlayNetease, onOpenPlaylist }: {
+function RecommendTab({ formatTime, onPlayNetease, onPlayAll, onOpenPlaylist }: {
     formatTime: (s: number) => string;
     onPlayNetease: (r: NeteaseSearchResult) => void;
+    onPlayAll: (results: NeteaseSearchResult[]) => void;
     onOpenPlaylist: (playlist: NeteasePlaylist) => void;
 }) {
     const [dailySongs, setDailySongs] = useState<NeteaseSearchResult[]>(() => readMusicCache("music-recommend-daily", []));
@@ -468,7 +470,18 @@ function RecommendTab({ formatTime, onPlayNetease, onOpenPlaylist }: {
             ) : (
                 <>
                     {dailySongs.length > 0 && (
-                        <MusicSection title="每日推荐" action={`${dailySongs.length} 首`}>
+                        <MusicSection
+                            title="每日推荐"
+                            action={
+                                <span className="music-section-action">
+                                    {dailySongs.length} 首
+                                    <button className="music-playlist-play-all" onClick={() => onPlayAll(dailySongs)}>
+                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z" /></svg>
+                                        <span>播放全部</span>
+                                    </button>
+                                </span>
+                            }
+                        >
                             <div className="music-list music-list-compact">
                                 {dailySongs.slice(0, 8).map((song, idx) => (
                                     <NeteaseSongRow key={song.id} song={song} index={idx} formatTime={formatTime} onPlay={onPlayNetease} />
@@ -588,7 +601,7 @@ function MineTab({ player, formatTime, onPlayNetease, onPlayAll, activePlaylist,
     );
 }
 
-function MusicSection({ title, action, children }: { title: string; action?: string; children: ReactNode }) {
+function MusicSection({ title, action, children }: { title: string; action?: ReactNode; children: ReactNode }) {
     return (
         <section className="music-section">
             <div className="music-section-head">
