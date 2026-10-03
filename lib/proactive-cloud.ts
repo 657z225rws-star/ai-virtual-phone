@@ -756,6 +756,7 @@ let swMessageListener: ((event: MessageEvent) => void) | null = null;
 let chatMessageListener: ((event: Event) => void) | null = null;
 /** 每个角色上次因为"发了消息"而同步材料的时间，用来节流 */
 const lastMessageSyncAt = new Map<string, number>();
+const pendingMessageSyncTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
 /**
  * 有新消息就刷新这个角色的云端材料（节流）。
@@ -776,7 +777,21 @@ function onChatMessagePushed(event: Event): void {
     if (!config.perCharacter[characterId]?.enabled) return;
 
     const last = lastMessageSyncAt.get(characterId) ?? 0;
-    if (Date.now() - last < MESSAGE_SYNC_THROTTLE_MS) return;
+    const elapsed = Date.now() - last;
+    if (elapsed < MESSAGE_SYNC_THROTTLE_MS) {
+        // 节流期内：不丢掉这次更新，排一个尾随同步，等窗口期满立刻补一次，
+        // 保证锁屏/关 app 前的最后几句话也能被云端看到。
+        if (pendingMessageSyncTimers.has(characterId)) return;
+        const timer = setTimeout(() => {
+            pendingMessageSyncTimers.delete(characterId);
+            const latest = loadProactiveCloudConfig();
+            if (!isProactiveCloudReady(latest) || !latest.perCharacter[characterId]?.enabled) return;
+            lastMessageSyncAt.set(characterId, Date.now());
+            void syncProactiveMaterial(characterId, latest).catch(() => {});
+        }, MESSAGE_SYNC_THROTTLE_MS - elapsed);
+        pendingMessageSyncTimers.set(characterId, timer);
+        return;
+    }
     lastMessageSyncAt.set(characterId, Date.now());
     void syncProactiveMaterial(characterId, config).catch(() => {});
 }
