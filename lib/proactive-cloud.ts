@@ -544,16 +544,34 @@ export async function reconcileIntervalTasks(
 
     for (const [characterId, settings] of Object.entries(config.perCharacter)) {
         const wanted = Math.max(0, Math.round(settings.intervalMinutes || 0));
-        const existing = pending.find(item => item.character_id === characterId && item.kind === "interval");
+        const mineInterval = pending.filter(item => item.character_id === characterId && item.kind === "interval");
 
         if (!settings.enabled || wanted <= 0) {
-            if (existing || pending.some(item => item.character_id === characterId)) {
+            if (mineInterval.length > 0 || pending.some(item => item.character_id === characterId)) {
                 if (await cancelCharacterTasks(characterId, config)) cleared++;
             }
             continue;
         }
 
-        if (existing && Number(existing.interval_ms || 0) === wanted * 60 * 1000) continue;
+        // 健康状态 = 该角色名下恰好一条 interval 任务、ID 是正主（intervalTaskId）、间隔与设置一致。
+        // 旧版 Worker 每次执行都会给任务换一个"滚长时间戳"的新 ID，改间隔时旧的链式任务不会被删，
+        // 会带着老间隔（比如 6 分钟）永远自我续命——这就是一晚上连发几十条的根源。
+        const canonicalId = intervalTaskId(config.deviceId, characterId);
+        const healthy = mineInterval.length === 1
+            && mineInterval[0].id === canonicalId
+            && Number(mineInterval[0].interval_ms || 0) === wanted * 60 * 1000;
+        if (healthy) continue;
+
+        // 不健康：先逐个清掉名下所有 interval 任务（按 ID 删，不影响同角色的 once 任务），再重新登记
+        let cleanupOk = true;
+        for (const stray of mineInterval) {
+            if (await cancelProactiveTask(stray.id, config)) cleared++;
+            else cleanupOk = false;
+        }
+        if (!cleanupOk) {
+            reasons.push(`${characterId}：清理旧任务失败，本轮跳过登记`);
+            continue;
+        }
 
         const synced = await syncProactiveMaterial(characterId, config);
         if (!synced.ok) {
