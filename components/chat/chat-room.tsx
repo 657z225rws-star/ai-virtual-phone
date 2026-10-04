@@ -4539,25 +4539,13 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
         swipeEditingRef.current = editingMessageId;
     });
 
-    // 触屏右滑引用：走原生 touch 事件通道（React 合成 pointer 事件在触屏上会被浏览器
-    // 滚动抢手势、且逐帧 setState 重渲染巨型组件导致"不跟手"）。事件委托到 document：
-    // 按住气泡横向滑动超过 6px 即"锁定"，此后每帧 preventDefault 阻断滚动（浏览器就
-    // 无缘启动滚动、不会发 pointercancel），位移直接写气泡 DOM。鼠标拖动仍走 pointer 通道。
-    // 底部的调试浮层是远程排查用的临时件，功能验证通过后移除。
+    // 触屏右滑引用：走原生 touch 事件通道（React 合成 pointer 事件在 iOS 上会被浏览器
+    // 滚动抢手势）。事件委托到 document：按住气泡横向滑动超过 6px 即"锁定"，此后每帧
+    // preventDefault 阻断滚动（浏览器无缘启动滚动、不会发 pointercancel），位移直接写
+    // 气泡 DOM。鼠标拖动仍走 pointer 通道。iOS 真机已实测跟手（2026-10-05）。
     useEffect(() => {
         let g: { msgId: string; el: HTMLElement; startX: number; startY: number; dx: number; locked: boolean } | null = null;
-        let fadeTimer: ReturnType<typeof setTimeout> | null = null;
         let resetTimer: ReturnType<typeof setTimeout> | null = null;
-
-        const dbg = document.createElement("div");
-        dbg.style.cssText = "position:fixed;left:50%;bottom:12px;transform:translateX(-50%);z-index:2147483647;background:rgba(0,0,0,.72);color:#7CFC00;font:11px/16px monospace;padding:3px 10px;border-radius:10px;pointer-events:none;opacity:0;transition:opacity .25s;max-width:80vw;overflow:hidden;";
-        document.body.appendChild(dbg);
-        const show = (text: string) => {
-            dbg.textContent = text;
-            dbg.style.opacity = "1";
-            if (fadeTimer) clearTimeout(fadeTimer);
-            fadeTimer = setTimeout(() => { dbg.style.opacity = "0"; }, 2200);
-        };
 
         const setHint = (el: HTMLElement, dx: number) => {
             const hint = el.querySelector<HTMLElement>(".chat-swipe-quote-hint");
@@ -4590,7 +4578,6 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                 if ((ox === "auto" || ox === "scroll") && n.scrollWidth > n.clientWidth + 2) return;
             }
             g = { msgId, el: bubble, startX: e.touches[0].clientX, startY: e.touches[0].clientY, dx: 0, locked: false };
-            show(`T ${msgId.slice(-4)}`);
         };
 
         const onTouchMove = (e: TouchEvent) => {
@@ -4601,12 +4588,11 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
             const dy = t.clientY - g.startY;
             if (!g.locked) {
                 // 纵向意图明确：让位给页面滚动
-                if (dy > Math.abs(dx) && dy > 12) { g = null; show("V-scroll"); return; }
+                if (dy > Math.abs(dx) && dy > 12) { g = null; return; }
                 // 右滑意图明确（横向位移超过纵向且超过 6px）：锁定为引用手势
                 if (dx > Math.max(dy, 6)) {
                     g.locked = true;
                     g.el.style.transition = "none";
-                    show(`L ${Math.round(dx)}px`);
                 } else return;
             }
             // 锁定后每帧阻断滚动——这是"跟手"的关键：滚动不启动就没有 pointercancel
@@ -4628,25 +4614,17 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                 if (msg) { setQuotingMessage(msg); setActiveMessageId(null); quoted = true; }
             }
             release(el);
-            show(`E ${Math.round(dx)}px${quoted ? " Q!" : ""}`);
-        };
-
-        const onPointerCancelLog = (e: PointerEvent) => {
-            if (g) show(`PC ${e.pointerType}`);
         };
 
         document.addEventListener("touchstart", onTouchStart, { passive: true });
         document.addEventListener("touchmove", onTouchMove, { passive: false });
         document.addEventListener("touchend", onTouchEnd, { passive: true });
         document.addEventListener("touchcancel", onTouchEnd, { passive: true });
-        document.addEventListener("pointercancel", onPointerCancelLog, true);
         return () => {
             document.removeEventListener("touchstart", onTouchStart);
             document.removeEventListener("touchmove", onTouchMove);
             document.removeEventListener("touchend", onTouchEnd);
             document.removeEventListener("touchcancel", onTouchEnd);
-            document.removeEventListener("pointercancel", onPointerCancelLog, true);
-            dbg.remove();
         };
     }, []);
 
@@ -5914,11 +5892,11 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                                             {/* Message Actions Popup */}
                                             {activeMessageId === msg.id && renderBubbleContextMenu(msg)}
 
-                                            {/* 右滑引用：跟随气泡出现的提示角标（常驻隐藏，滑动时由手势逻辑直接改透明度） */}
+                                            {/* 右滑引用：跟随气泡出现的绿色小圆点提示（常驻隐藏，滑动时由手势逻辑直接改透明度） */}
                                             <span
                                                 className="chat-swipe-quote-hint"
                                                 style={{ visibility: "hidden", opacity: 0 }}
-                                            >引用</span>
+                                            />
 
                                             <MessageBubble
                                                 msg={renderMsg}
