@@ -4475,8 +4475,10 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
         startPosRef.current = anchor;
         longPressTriggeredRef.current = false;
 
-        // 右滑引用：记录起点并锁定气泡元素（触屏/触笔/鼠标左键都参与；右键已在上面 return）
-        swipeGestureRef.current = { id: msgId, startX: anchor.x, startY: anchor.y, el: e.currentTarget as HTMLElement, dx: 0 };
+        // 右滑引用跟随：触屏走原生 touch 通道（见下方 effect），这里只负责鼠标拖动
+        if (e.pointerType === "mouse") {
+            swipeGestureRef.current = { id: msgId, startX: anchor.x, startY: anchor.y, el: e.currentTarget as HTMLElement, dx: 0 };
+        }
         if (swipeReleaseTimerRef.current) {
             clearTimeout(swipeReleaseTimerRef.current);
             swipeReleaseTimerRef.current = null;
@@ -4529,20 +4531,123 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
         }
     };
 
-    // 触屏保底：右滑意图明确（横向位移明显大于纵向）时阻止浏览器接管滚动——
-    // 滚动一旦被启动，指针事件流会被 pointercancel 掐断，气泡就永远拉不动了。
+    // 多选/编辑态镜像（原生 touch 通道在无依赖 effect 里读不到最新 state，用 ref 桥接）
+    const swipeMultiSelectRef = useRef(false);
+    const swipeEditingRef = useRef<string | null>(null);
     useEffect(() => {
+        swipeMultiSelectRef.current = isMultiSelectMode;
+        swipeEditingRef.current = editingMessageId;
+    });
+
+    // 触屏右滑引用：走原生 touch 事件通道（React 合成 pointer 事件在触屏上会被浏览器
+    // 滚动抢手势、且逐帧 setState 重渲染巨型组件导致"不跟手"）。事件委托到 document：
+    // 按住气泡横向滑动超过 6px 即"锁定"，此后每帧 preventDefault 阻断滚动（浏览器就
+    // 无缘启动滚动、不会发 pointercancel），位移直接写气泡 DOM。鼠标拖动仍走 pointer 通道。
+    // 底部的调试浮层是远程排查用的临时件，功能验证通过后移除。
+    useEffect(() => {
+        let g: { msgId: string; el: HTMLElement; startX: number; startY: number; dx: number; locked: boolean } | null = null;
+        let fadeTimer: ReturnType<typeof setTimeout> | null = null;
+        let resetTimer: ReturnType<typeof setTimeout> | null = null;
+
+        const dbg = document.createElement("div");
+        dbg.style.cssText = "position:fixed;left:50%;bottom:12px;transform:translateX(-50%);z-index:2147483647;background:rgba(0,0,0,.72);color:#7CFC00;font:11px/16px monospace;padding:3px 10px;border-radius:10px;pointer-events:none;opacity:0;transition:opacity .25s;max-width:80vw;overflow:hidden;";
+        document.body.appendChild(dbg);
+        const show = (text: string) => {
+            dbg.textContent = text;
+            dbg.style.opacity = "1";
+            if (fadeTimer) clearTimeout(fadeTimer);
+            fadeTimer = setTimeout(() => { dbg.style.opacity = "0"; }, 2200);
+        };
+
+        const setHint = (el: HTMLElement, dx: number) => {
+            const hint = el.querySelector<HTMLElement>(".chat-swipe-quote-hint");
+            if (!hint) return;
+            hint.style.visibility = dx > 14 ? "visible" : "hidden";
+            hint.style.opacity = String(Math.max(0, Math.min(1, dx / SWIPE_QUOTE_TRIGGER_PX)));
+        };
+
+        const release = (el: HTMLElement) => {
+            el.style.transition = "transform 0.15s ease-out";
+            el.style.transform = "translateX(0px)";
+            setHint(el, 0);
+            if (resetTimer) clearTimeout(resetTimer);
+            resetTimer = setTimeout(() => { el.style.transition = ""; el.style.transform = ""; }, 200);
+        };
+
+        const onTouchStart = (e: TouchEvent) => {
+            if (e.touches.length !== 1) return;
+            const target = e.target;
+            if (!(target instanceof Element)) return;
+            // 多选模式下不参与；正在编辑的气泡不参与
+            if (swipeMultiSelectRef.current) return;
+            const bubble = target.closest<HTMLElement>("[data-msg-id]");
+            if (!bubble) return;
+            const msgId = bubble.getAttribute("data-msg-id") || "";
+            if (swipeEditingRef.current && swipeEditingRef.current === msgId) return;
+            // 气泡内有横向可滚动区域（代码块/表格等）时让位，不抢滚动
+            for (let n: HTMLElement | null = target as HTMLElement; n && n !== bubble; n = n.parentElement) {
+                const ox = getComputedStyle(n).overflowX;
+                if ((ox === "auto" || ox === "scroll") && n.scrollWidth > n.clientWidth + 2) return;
+            }
+            g = { msgId, el: bubble, startX: e.touches[0].clientX, startY: e.touches[0].clientY, dx: 0, locked: false };
+            show(`T ${msgId.slice(-4)}`);
+        };
+
         const onTouchMove = (e: TouchEvent) => {
-            const sw = swipeGestureRef.current;
-            if (!sw) return;
+            if (!g) return;
             const t = e.touches[0];
             if (!t) return;
-            const dx = Math.abs(t.clientX - sw.startX);
-            const dy = Math.abs(t.clientY - sw.startY);
-            if (dx > dy && dx > 8) e.preventDefault();
+            const dx = t.clientX - g.startX;
+            const dy = t.clientY - g.startY;
+            if (!g.locked) {
+                // 纵向意图明确：让位给页面滚动
+                if (dy > Math.abs(dx) && dy > 12) { g = null; show("V-scroll"); return; }
+                // 右滑意图明确（横向位移超过纵向且超过 6px）：锁定为引用手势
+                if (dx > Math.max(dy, 6)) {
+                    g.locked = true;
+                    g.el.style.transition = "none";
+                    show(`L ${Math.round(dx)}px`);
+                } else return;
+            }
+            // 锁定后每帧阻断滚动——这是"跟手"的关键：滚动不启动就没有 pointercancel
+            e.preventDefault();
+            if (dx > 0) {
+                g.dx = Math.min(dx, SWIPE_QUOTE_MAX_PX);
+                g.el.style.transform = `translateX(${g.dx}px)`;
+                setHint(g.el, g.dx);
+            }
         };
+
+        const onTouchEnd = () => {
+            if (!g) return;
+            const { msgId, el, dx } = g;
+            g = null;
+            let quoted = false;
+            if (dx >= SWIPE_QUOTE_TRIGGER_PX) {
+                const msg = visibleMessagesRef.current.find(m => m.id === msgId);
+                if (msg) { setQuotingMessage(msg); setActiveMessageId(null); quoted = true; }
+            }
+            release(el);
+            show(`E ${Math.round(dx)}px${quoted ? " Q!" : ""}`);
+        };
+
+        const onPointerCancelLog = (e: PointerEvent) => {
+            if (g) show(`PC ${e.pointerType}`);
+        };
+
+        document.addEventListener("touchstart", onTouchStart, { passive: true });
         document.addEventListener("touchmove", onTouchMove, { passive: false });
-        return () => document.removeEventListener("touchmove", onTouchMove);
+        document.addEventListener("touchend", onTouchEnd, { passive: true });
+        document.addEventListener("touchcancel", onTouchEnd, { passive: true });
+        document.addEventListener("pointercancel", onPointerCancelLog, true);
+        return () => {
+            document.removeEventListener("touchstart", onTouchStart);
+            document.removeEventListener("touchmove", onTouchMove);
+            document.removeEventListener("touchend", onTouchEnd);
+            document.removeEventListener("touchcancel", onTouchEnd);
+            document.removeEventListener("pointercancel", onPointerCancelLog, true);
+            dbg.remove();
+        };
     }, []);
 
     const deleteWeixinCloudBeforeLocal = async (
