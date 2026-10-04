@@ -186,8 +186,8 @@ const CHAT_VISUAL_MEDIA_TYPES = new Set([
 const WEIXIN_CLOUD_DELETE_TIMEOUT_MS = 15000;
 
 // 左滑引用：气泡跟随手指左移，超过阈值松手即把该消息填入输入框上方的引用条
-const SWIPE_QUOTE_TRIGGER_PX = -56; // 松手触发阈值
-const SWIPE_QUOTE_MAX_PX = -84;     // 气泡最大位移
+const SWIPE_QUOTE_TRIGGER_PX = 56; // 松手触发阈值（右滑）
+const SWIPE_QUOTE_MAX_PX = 84;     // 气泡最大位移
 
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
     return new Promise<T>((resolve, reject) => {
@@ -4475,12 +4475,12 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
     };
 
     const handleMessagePointerUp = (e: React.PointerEvent, msg?: ChatMessage) => {
-        // 左滑引用：松手时位移越过阈值且基本是横向滑动，直接填入引用条
+        // 右滑引用：松手时位移越过阈值且基本是横向滑动，直接填入引用条
         const sw = swipeStartRef.current;
         if (sw && msg) {
             const dx = e.clientX - sw.x;
             const dy = Math.abs(e.clientY - sw.y);
-            if (dx <= SWIPE_QUOTE_TRIGGER_PX && dy < 48) {
+            if (dx >= SWIPE_QUOTE_TRIGGER_PX && dy < 48) {
                 setQuotingMessage(msg);
                 setActiveMessageId(null);
             }
@@ -5748,7 +5748,7 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                                                             }
                                                         }
                                                     }
-                                                    // 左滑引用：气泡跟随手指/鼠标左移；纵向滑动时交还给浏览器滚动
+                                                    // 右滑引用：气泡跟随手指/鼠标右移；纵向滑动时交还给浏览器滚动
                                                     const sw = swipeStartRef.current;
                                                     if (sw) {
                                                         const sdx = e.clientX - sw.x;
@@ -5756,8 +5756,8 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                                                         if (sdy > Math.abs(sdx) && sdy > 12) {
                                                             swipeStartRef.current = null;
                                                             setSwipeQuote(null);
-                                                        } else if (sdx < 0) {
-                                                            setSwipeQuote({ id: msg.id, dx: Math.max(sdx, SWIPE_QUOTE_MAX_PX) });
+                                                        } else if (sdx > 0) {
+                                                            setSwipeQuote({ id: msg.id, dx: Math.min(sdx, SWIPE_QUOTE_MAX_PX) });
                                                         }
                                                     }
                                                 },
@@ -5765,6 +5765,8 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                                             } : {})}
                                             className={`chat-bubble-role-${msg.role} ${isMediaBubble ? "chat-bubble-media" : ""} ${isStandaloneHtmlPreview ? "chat-bubble-html-preview" : ""} ${renderMsg.mediaType === "music_share" ? "chat-bubble-music-share" : ""} ${renderMsg.mediaType === "gift" || renderMsg.mediaType === "image" || isStandaloneHtmlPreview ? "rounded-none" : "rounded-md"} break-words relative cursor-pointer select-none`}
                                             style={{
+                                                // 触屏上把横向手势留给气泡自己，浏览器只负责纵向滚动，否则滑动刚起步就被滚动接管掐断
+                                                touchAction: "pan-y",
                                                 ...(isStandaloneHtmlPreview ? STANDALONE_CARD_BUBBLE_STYLE : {}),
                                                 ...(swipeQuote?.id === msg.id ? {
                                                     transform: `translateX(${swipeQuote.released ? 0 : swipeQuote.dx}px)`,
@@ -5778,11 +5780,11 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                                             {/* Message Actions Popup */}
                                             {activeMessageId === msg.id && renderBubbleContextMenu(msg)}
 
-                                            {/* 左滑引用：跟随气泡尾部出现的提示角标 */}
-                                            {swipeQuote?.id === msg.id && !swipeQuote.released && swipeQuote.dx < -14 && (
+                                            {/* 右滑引用：跟随气泡头部出现的提示角标 */}
+                                            {swipeQuote?.id === msg.id && !swipeQuote.released && swipeQuote.dx > 14 && (
                                                 <span
                                                     className="chat-swipe-quote-hint"
-                                                    style={{ opacity: Math.min(1, -swipeQuote.dx / -SWIPE_QUOTE_TRIGGER_PX) }}
+                                                    style={{ opacity: Math.min(1, swipeQuote.dx / SWIPE_QUOTE_TRIGGER_PX) }}
                                                 >引用</span>
                                             )}
 
