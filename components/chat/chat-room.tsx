@@ -185,6 +185,10 @@ const CHAT_VISUAL_MEDIA_TYPES = new Set([
 
 const WEIXIN_CLOUD_DELETE_TIMEOUT_MS = 15000;
 
+// 左滑引用：气泡跟随手指左移，超过阈值松手即把该消息填入输入框上方的引用条
+const SWIPE_QUOTE_TRIGGER_PX = -56; // 松手触发阈值
+const SWIPE_QUOTE_MAX_PX = -84;     // 气泡最大位移
+
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
     return new Promise<T>((resolve, reject) => {
         const timer = window.setTimeout(() => reject(new Error(message)), timeoutMs);
@@ -1264,6 +1268,11 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
     const longPressTimerRef = useRef<NodeJS.Timeout | null>(null);
     const startPosRef = useRef<{ x: number, y: number } | null>(null);
     const longPressTriggeredRef = useRef(false);
+
+    // 左滑引用手势状态（与长按共用 pointer 事件，移动超过 10px 会取消长按，互不干扰）
+    const swipeStartRef = useRef<{ x: number, y: number } | null>(null);
+    const swipeReleaseTimerRef = useRef<NodeJS.Timeout | null>(null);
+    const [swipeQuote, setSwipeQuote] = useState<{ id: string, dx: number, released?: boolean } | null>(null);
 
     const scrollRef = useRef<HTMLDivElement>(null);
     const mountedRef = useRef(true);
@@ -4449,6 +4458,14 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
         startPosRef.current = anchor;
         longPressTriggeredRef.current = false;
 
+        // 左滑引用：记录起点（触屏/触笔/鼠标左键都参与；右键已在上面 return）
+        swipeStartRef.current = anchor;
+        if (swipeReleaseTimerRef.current) {
+            clearTimeout(swipeReleaseTimerRef.current);
+            swipeReleaseTimerRef.current = null;
+        }
+        setSwipeQuote(null);
+
         if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
         longPressTimerRef.current = setTimeout(() => {
             longPressTriggeredRef.current = true;
@@ -4457,7 +4474,18 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
         }, 500); // 500ms long press
     };
 
-    const handleMessagePointerUp = (e: React.PointerEvent) => {
+    const handleMessagePointerUp = (e: React.PointerEvent, msg?: ChatMessage) => {
+        // 左滑引用：松手时位移越过阈值且基本是横向滑动，直接填入引用条
+        const sw = swipeStartRef.current;
+        if (sw && msg) {
+            const dx = e.clientX - sw.x;
+            const dy = Math.abs(e.clientY - sw.y);
+            if (dx <= SWIPE_QUOTE_TRIGGER_PX && dy < 48) {
+                setQuotingMessage(msg);
+                setActiveMessageId(null);
+            }
+        }
+        swipeStartRef.current = null;
         startPosRef.current = null;
         if (longPressTimerRef.current) {
             clearTimeout(longPressTimerRef.current);
@@ -4469,14 +4497,26 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
             e.preventDefault();
             longPressTriggeredRef.current = false;
         }
+        // 气泡回弹归位
+        if (swipeQuote) {
+            setSwipeQuote(prev => (prev ? { ...prev, dx: 0, released: true } : prev));
+            if (swipeReleaseTimerRef.current) clearTimeout(swipeReleaseTimerRef.current);
+            swipeReleaseTimerRef.current = setTimeout(() => setSwipeQuote(null), 160);
+        }
     };
 
     const handleMessagePointerCancel = () => {
+        swipeStartRef.current = null;
         startPosRef.current = null;
         longPressTriggeredRef.current = false;
         if (longPressTimerRef.current) {
             clearTimeout(longPressTimerRef.current);
             longPressTimerRef.current = null;
+        }
+        if (swipeQuote) {
+            setSwipeQuote(prev => (prev ? { ...prev, dx: 0, released: true } : prev));
+            if (swipeReleaseTimerRef.current) clearTimeout(swipeReleaseTimerRef.current);
+            swipeReleaseTimerRef.current = setTimeout(() => setSwipeQuote(null), 160);
         }
     };
 
@@ -5684,27 +5724,67 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                                             )}
                                             <div
                                             {...(editingMessageId !== msg.id ? {
-                                                onPointerDown: (e: React.PointerEvent) => { e.stopPropagation(); handleMessagePointerDown(e, msg.id); },
-                                                onPointerUp: (e: React.PointerEvent) => handleMessagePointerUp(e),
+                                                onPointerDown: (e: React.PointerEvent) => {
+                                                    e.stopPropagation();
+                                                    handleMessagePointerDown(e, msg.id);
+                                                    // 鼠标拖拽时把后续指针事件锁在气泡上，拖出边界不打断
+                                                    try { (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId); } catch { }
+                                                },
+                                                onDragStart: (e: React.DragEvent) => e.preventDefault(),
+                                                onPointerUp: (e: React.PointerEvent) => handleMessagePointerUp(e, msg),
                                                 onPointerCancel: handleMessagePointerCancel,
                                                 onPointerLeave: handleMessagePointerCancel,
                                                 onPointerMove: (e: React.PointerEvent) => {
                                                     if (startPosRef.current) {
                                                         const dx = Math.abs(e.clientX - startPosRef.current.x);
                                                         const dy = Math.abs(e.clientY - startPosRef.current.y);
-                                                        if (dx > 10 || dy > 10) handleMessagePointerCancel();
+                                                        if (dx > 10 || dy > 10) {
+                                                            // 只取消长按计时，不能清掉左滑起点（swipeStartRef），否则滑动永远无法启动
+                                                            startPosRef.current = null;
+                                                            longPressTriggeredRef.current = false;
+                                                            if (longPressTimerRef.current) {
+                                                                clearTimeout(longPressTimerRef.current);
+                                                                longPressTimerRef.current = null;
+                                                            }
+                                                        }
+                                                    }
+                                                    // 左滑引用：气泡跟随手指/鼠标左移；纵向滑动时交还给浏览器滚动
+                                                    const sw = swipeStartRef.current;
+                                                    if (sw) {
+                                                        const sdx = e.clientX - sw.x;
+                                                        const sdy = e.clientY - sw.y;
+                                                        if (sdy > Math.abs(sdx) && sdy > 12) {
+                                                            swipeStartRef.current = null;
+                                                            setSwipeQuote(null);
+                                                        } else if (sdx < 0) {
+                                                            setSwipeQuote({ id: msg.id, dx: Math.max(sdx, SWIPE_QUOTE_MAX_PX) });
+                                                        }
                                                     }
                                                 },
                                                 onContextMenu: (e: React.MouseEvent) => { e.preventDefault(); openMessageContextMenu(msg.id, { x: e.clientX, y: e.clientY }); },
                                             } : {})}
                                             className={`chat-bubble-role-${msg.role} ${isMediaBubble ? "chat-bubble-media" : ""} ${isStandaloneHtmlPreview ? "chat-bubble-html-preview" : ""} ${renderMsg.mediaType === "music_share" ? "chat-bubble-music-share" : ""} ${renderMsg.mediaType === "gift" || renderMsg.mediaType === "image" || isStandaloneHtmlPreview ? "rounded-none" : "rounded-md"} break-words relative cursor-pointer select-none`}
-                                            style={isStandaloneHtmlPreview ? STANDALONE_CARD_BUBBLE_STYLE : undefined}
+                                            style={{
+                                                ...(isStandaloneHtmlPreview ? STANDALONE_CARD_BUBBLE_STYLE : {}),
+                                                ...(swipeQuote?.id === msg.id ? {
+                                                    transform: `translateX(${swipeQuote.released ? 0 : swipeQuote.dx}px)`,
+                                                    transition: swipeQuote.released ? "transform 0.15s ease-out" : "none",
+                                                } : {}),
+                                            }}
                                             data-ui={msg.role === "user" ? "bubble-user" : "bubble-bot"}
                                             data-msg-id={msg.id}
                                             {...(activeMessageId === msg.id ? { "data-active": "" } : {})}
                                             >
                                             {/* Message Actions Popup */}
                                             {activeMessageId === msg.id && renderBubbleContextMenu(msg)}
+
+                                            {/* 左滑引用：跟随气泡尾部出现的提示角标 */}
+                                            {swipeQuote?.id === msg.id && !swipeQuote.released && swipeQuote.dx < -14 && (
+                                                <span
+                                                    className="chat-swipe-quote-hint"
+                                                    style={{ opacity: Math.min(1, -swipeQuote.dx / -SWIPE_QUOTE_TRIGGER_PX) }}
+                                                >引用</span>
+                                            )}
 
                                             <MessageBubble
                                                 msg={renderMsg}
