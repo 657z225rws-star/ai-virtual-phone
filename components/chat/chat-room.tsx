@@ -1269,10 +1269,10 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
     const startPosRef = useRef<{ x: number, y: number } | null>(null);
     const longPressTriggeredRef = useRef(false);
 
-    // 左滑引用手势状态（与长按共用 pointer 事件，移动超过 10px 会取消长按，互不干扰）
-    const swipeStartRef = useRef<{ x: number, y: number } | null>(null);
+    // 右滑引用手势状态（与长按共用 pointer 事件，移动超过 10px 会取消长按，互不干扰）。
+    // 跟随位移直接写气泡 DOM，不经过 setState——长列表每帧重渲染在手机上会卡成"拉不动"。
+    const swipeGestureRef = useRef<{ id: string; startX: number; startY: number; el: HTMLElement; dx: number } | null>(null);
     const swipeReleaseTimerRef = useRef<NodeJS.Timeout | null>(null);
-    const [swipeQuote, setSwipeQuote] = useState<{ id: string, dx: number, released?: boolean } | null>(null);
 
     const scrollRef = useRef<HTMLDivElement>(null);
     const mountedRef = useRef(true);
@@ -4446,6 +4446,23 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
         setActiveMessageId(null);
     };
 
+    // 右滑引用：气泡回弹归位 + 隐藏角标（直接操作 DOM，不触发渲染）
+    const releaseSwipeBubble = (sw: { el: HTMLElement }) => {
+        const el = sw.el;
+        el.style.transition = "transform 0.15s ease-out";
+        el.style.transform = "translateX(0px)";
+        const hint = el.querySelector<HTMLElement>(".chat-swipe-quote-hint");
+        if (hint) {
+            hint.style.opacity = "0";
+            hint.style.visibility = "hidden";
+        }
+        if (swipeReleaseTimerRef.current) clearTimeout(swipeReleaseTimerRef.current);
+        swipeReleaseTimerRef.current = setTimeout(() => {
+            el.style.transition = "";
+            el.style.transform = "";
+        }, 200);
+    };
+
     const handleMessagePointerDown = (e: React.PointerEvent, msgId: string) => {
         if (isMultiSelectMode) return;
         // Prevent right click from triggering the timer, as it has its own context menu handler
@@ -4458,13 +4475,12 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
         startPosRef.current = anchor;
         longPressTriggeredRef.current = false;
 
-        // 左滑引用：记录起点（触屏/触笔/鼠标左键都参与；右键已在上面 return）
-        swipeStartRef.current = anchor;
+        // 右滑引用：记录起点并锁定气泡元素（触屏/触笔/鼠标左键都参与；右键已在上面 return）
+        swipeGestureRef.current = { id: msgId, startX: anchor.x, startY: anchor.y, el: e.currentTarget as HTMLElement, dx: 0 };
         if (swipeReleaseTimerRef.current) {
             clearTimeout(swipeReleaseTimerRef.current);
             swipeReleaseTimerRef.current = null;
         }
-        setSwipeQuote(null);
 
         if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
         longPressTimerRef.current = setTimeout(() => {
@@ -4476,16 +4492,16 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
 
     const handleMessagePointerUp = (e: React.PointerEvent, msg?: ChatMessage) => {
         // 右滑引用：松手时位移越过阈值且基本是横向滑动，直接填入引用条
-        const sw = swipeStartRef.current;
-        if (sw && msg) {
-            const dx = e.clientX - sw.x;
-            const dy = Math.abs(e.clientY - sw.y);
-            if (dx >= SWIPE_QUOTE_TRIGGER_PX && dy < 48) {
+        const sw = swipeGestureRef.current;
+        if (sw && msg && sw.id === msg.id) {
+            const dy = Math.abs(e.clientY - sw.startY);
+            if (sw.dx >= SWIPE_QUOTE_TRIGGER_PX && dy < 48) {
                 setQuotingMessage(msg);
                 setActiveMessageId(null);
             }
+            releaseSwipeBubble(sw);
+            swipeGestureRef.current = null;
         }
-        swipeStartRef.current = null;
         startPosRef.current = null;
         if (longPressTimerRef.current) {
             clearTimeout(longPressTimerRef.current);
@@ -4497,28 +4513,37 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
             e.preventDefault();
             longPressTriggeredRef.current = false;
         }
-        // 气泡回弹归位
-        if (swipeQuote) {
-            setSwipeQuote(prev => (prev ? { ...prev, dx: 0, released: true } : prev));
-            if (swipeReleaseTimerRef.current) clearTimeout(swipeReleaseTimerRef.current);
-            swipeReleaseTimerRef.current = setTimeout(() => setSwipeQuote(null), 160);
-        }
     };
 
     const handleMessagePointerCancel = () => {
-        swipeStartRef.current = null;
+        const sw = swipeGestureRef.current;
+        if (sw) {
+            releaseSwipeBubble(sw);
+            swipeGestureRef.current = null;
+        }
         startPosRef.current = null;
         longPressTriggeredRef.current = false;
         if (longPressTimerRef.current) {
             clearTimeout(longPressTimerRef.current);
             longPressTimerRef.current = null;
         }
-        if (swipeQuote) {
-            setSwipeQuote(prev => (prev ? { ...prev, dx: 0, released: true } : prev));
-            if (swipeReleaseTimerRef.current) clearTimeout(swipeReleaseTimerRef.current);
-            swipeReleaseTimerRef.current = setTimeout(() => setSwipeQuote(null), 160);
-        }
     };
+
+    // 触屏保底：右滑意图明确（横向位移明显大于纵向）时阻止浏览器接管滚动——
+    // 滚动一旦被启动，指针事件流会被 pointercancel 掐断，气泡就永远拉不动了。
+    useEffect(() => {
+        const onTouchMove = (e: TouchEvent) => {
+            const sw = swipeGestureRef.current;
+            if (!sw) return;
+            const t = e.touches[0];
+            if (!t) return;
+            const dx = Math.abs(t.clientX - sw.startX);
+            const dy = Math.abs(t.clientY - sw.startY);
+            if (dx > dy && dx > 8) e.preventDefault();
+        };
+        document.addEventListener("touchmove", onTouchMove, { passive: false });
+        return () => document.removeEventListener("touchmove", onTouchMove);
+    }, []);
 
     const deleteWeixinCloudBeforeLocal = async (
         targetMessages: ChatMessage[],
@@ -5739,7 +5764,7 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                                                         const dx = Math.abs(e.clientX - startPosRef.current.x);
                                                         const dy = Math.abs(e.clientY - startPosRef.current.y);
                                                         if (dx > 10 || dy > 10) {
-                                                            // 只取消长按计时，不能清掉左滑起点（swipeStartRef），否则滑动永远无法启动
+                                                            // 只取消长按计时，不能清掉右滑手势（swipeGestureRef），否则滑动永远无法启动
                                                             startPosRef.current = null;
                                                             longPressTriggeredRef.current = false;
                                                             if (longPressTimerRef.current) {
@@ -5748,16 +5773,24 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                                                             }
                                                         }
                                                     }
-                                                    // 右滑引用：气泡跟随手指/鼠标右移；纵向滑动时交还给浏览器滚动
-                                                    const sw = swipeStartRef.current;
-                                                    if (sw) {
-                                                        const sdx = e.clientX - sw.x;
-                                                        const sdy = e.clientY - sw.y;
+                                                    // 右滑引用：气泡跟随手指/鼠标右移（直接写 DOM，不走 setState）；纵向滑动时交还给浏览器滚动
+                                                    const sw = swipeGestureRef.current;
+                                                    if (sw && sw.id === msg.id) {
+                                                        const sdx = e.clientX - sw.startX;
+                                                        const sdy = e.clientY - sw.startY;
                                                         if (sdy > Math.abs(sdx) && sdy > 12) {
-                                                            swipeStartRef.current = null;
-                                                            setSwipeQuote(null);
+                                                            releaseSwipeBubble(sw);
+                                                            swipeGestureRef.current = null;
                                                         } else if (sdx > 0) {
-                                                            setSwipeQuote({ id: msg.id, dx: Math.min(sdx, SWIPE_QUOTE_MAX_PX) });
+                                                            const clamped = Math.min(sdx, SWIPE_QUOTE_MAX_PX);
+                                                            sw.dx = clamped;
+                                                            sw.el.style.transition = "none";
+                                                            sw.el.style.transform = `translateX(${clamped}px)`;
+                                                            const hint = sw.el.querySelector<HTMLElement>(".chat-swipe-quote-hint");
+                                                            if (hint) {
+                                                                hint.style.visibility = clamped > 14 ? "visible" : "hidden";
+                                                                hint.style.opacity = String(Math.min(1, clamped / SWIPE_QUOTE_TRIGGER_PX));
+                                                            }
                                                         }
                                                     }
                                                 },
@@ -5768,10 +5801,6 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                                                 // 触屏上把横向手势留给气泡自己，浏览器只负责纵向滚动，否则滑动刚起步就被滚动接管掐断
                                                 touchAction: "pan-y",
                                                 ...(isStandaloneHtmlPreview ? STANDALONE_CARD_BUBBLE_STYLE : {}),
-                                                ...(swipeQuote?.id === msg.id ? {
-                                                    transform: `translateX(${swipeQuote.released ? 0 : swipeQuote.dx}px)`,
-                                                    transition: swipeQuote.released ? "transform 0.15s ease-out" : "none",
-                                                } : {}),
                                             }}
                                             data-ui={msg.role === "user" ? "bubble-user" : "bubble-bot"}
                                             data-msg-id={msg.id}
@@ -5780,13 +5809,11 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                                             {/* Message Actions Popup */}
                                             {activeMessageId === msg.id && renderBubbleContextMenu(msg)}
 
-                                            {/* 右滑引用：跟随气泡头部出现的提示角标 */}
-                                            {swipeQuote?.id === msg.id && !swipeQuote.released && swipeQuote.dx > 14 && (
-                                                <span
-                                                    className="chat-swipe-quote-hint"
-                                                    style={{ opacity: Math.min(1, swipeQuote.dx / SWIPE_QUOTE_TRIGGER_PX) }}
-                                                >引用</span>
-                                            )}
+                                            {/* 右滑引用：跟随气泡出现的提示角标（常驻隐藏，滑动时由手势逻辑直接改透明度） */}
+                                            <span
+                                                className="chat-swipe-quote-hint"
+                                                style={{ visibility: "hidden", opacity: 0 }}
+                                            >引用</span>
 
                                             <MessageBubble
                                                 msg={renderMsg}
