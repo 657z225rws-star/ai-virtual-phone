@@ -273,6 +273,8 @@ export type InstalledCustomApp = {
   updatedAt: string;
   /** 来源标记:从应用广场安装/更新时记录市场条目 id;本地导入的没有此字段 */
   marketItemId?: string;
+  /** 来源标记:从资源集市安装时记录集市条目路径（如 "资源/Js插件/xxx"） */
+  resourceHubPath?: string;
 };
 
 export function isCustomAppIconId(value: string): value is CustomAppIconId {

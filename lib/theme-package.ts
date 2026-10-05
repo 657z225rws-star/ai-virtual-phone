@@ -427,6 +427,11 @@ export async function inspectThemePackageFile(file: File): Promise<ThemePackageS
   return makeSummary(manifest);
 }
 
+/**
+ * 桌面 shell 走与外观页导入完全相同的落地路径。
+ */
+export const THEME_PACKAGE_INSTALLED_EVENT = "ai-phone-theme-package-installed";
+
 export async function installThemePackageFile(file: File): Promise<InstalledThemePackage> {
   const { zip, manifest } = await loadZip(file);
   const records: ThemeAssetRecord[] = [];

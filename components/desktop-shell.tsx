@@ -61,8 +61,11 @@ import {
 } from "@/lib/custom-app-tool-runtime";
 import {
   CUSTOM_APPS_UPDATED_EVENT,
+  CUSTOM_APP_PLACE_DESKTOP_EVENT,
   loadInstalledCustomApps,
 } from "@/lib/custom-app-storage";
+import { ResourceHubApp } from "@/components/resource-hub/resource-hub-app";
+import { THEME_PACKAGE_INSTALLED_EVENT } from "@/lib/theme-package";
 import {
   isCustomAppMarketItemNewerThanInstalled,
   resolveCustomAppMarketItemForInstalled,
@@ -1392,6 +1395,36 @@ export function DesktopShell({ initialThemeProfile, initialThemeAssets }: Deskto
     return () => window.removeEventListener(CUSTOM_APPS_UPDATED_EVENT, refreshCustomApps);
   }, []);
 
+  // 其他模块（资源集市装应用）请求把已安装应用的图标摆上桌面
+  const handleInstallCustomAppToDesktopRef = useRef<((app: InstalledCustomApp) => void) | null>(null);
+  const handleThemeDesktopChangeRef = useRef<((next: { widgets: WidgetInstance[]; iconLayout: DesktopLayout; dock?: DesktopIconId[] }) => void) | null>(null);
+  const applyThemeRef = useRef<((next: ThemeProfile) => Promise<void>) | null>(null);
+  useEffect(() => {
+    const placeHandler = (e: Event) => {
+      const appId = (e as CustomEvent).detail?.appId;
+      if (typeof appId !== "string" || !appId) return;
+      const app = loadInstalledCustomApps().find(item => item.id === appId);
+      if (app) handleInstallCustomAppToDesktopRef.current?.(app);
+    };
+    window.addEventListener(CUSTOM_APP_PLACE_DESKTOP_EVENT, placeHandler);
+    return () => window.removeEventListener(CUSTOM_APP_PLACE_DESKTOP_EVENT, placeHandler);
+  }, []);
+
+  // 资源集市在 lib 里装完主题包后请桌面刷新。走的落地路径与外观页导入完全一致
+  // （handleThemeDesktopChange + applyTheme），只是入口从 React 回调换成了事件。
+  useEffect(() => {
+    const onThemePackage = (e: Event) => {
+      const detail = (e as CustomEvent).detail as
+        | { themeProfile?: ThemeProfile; iconLayout?: DesktopLayout; widgets?: WidgetInstance[]; dock?: DesktopIconId[] }
+        | undefined;
+      if (!detail?.themeProfile || !detail.iconLayout || !detail.widgets) return;
+      handleThemeDesktopChangeRef.current?.({ widgets: detail.widgets, iconLayout: detail.iconLayout, dock: detail.dock });
+      void applyThemeRef.current?.(detail.themeProfile);
+    };
+    window.addEventListener(THEME_PACKAGE_INSTALLED_EVENT, onThemePackage);
+    return () => window.removeEventListener(THEME_PACKAGE_INSTALLED_EVENT, onThemePackage);
+  }, []);
+
   useEffect(() => {
     const refreshHostState = () => setCustomAppBadges(loadCustomAppBadges());
     refreshHostState();
@@ -2035,6 +2068,7 @@ html,body{margin:0;padding:0;width:100%;height:100%;background:#121110;color:rgb
       window.setTimeout(() => setCurrentPageIndex(Math.max(0, (placedPageNumber ?? 1) - 1)), 0);
     }
   }, []);
+  handleInstallCustomAppToDesktopRef.current = handleInstallCustomAppToDesktop;
 
   // Allow other components to switch apps via custom event
   const [chatInitSessionId, setChatInitSessionId] = useState<string | null>(null);
@@ -2861,6 +2895,8 @@ html,body{margin:0;padding:0;width:100%;height:100%;background:#121110;color:rgb
     saveWidgets(normalizedWidgets);
     kvSet(ICON_LAYOUT_STORAGE_KEY, JSON.stringify(normalizedLayout));
   }
+  handleThemeDesktopChangeRef.current = handleThemeDesktopChange;
+  applyThemeRef.current = applyTheme;
 
   function handleWidgetConfigChange(widgetId: string, config: Record<string, unknown>): void {
     setWidgets((prev) => {
@@ -3426,6 +3462,10 @@ html,body{margin:0;padding:0;width:100%;height:100%;background:#121110;color:rgb
 
     if (activeApp === "cocreate") {
       return <CoCreateApp onClose={() => setActiveApp(null)} onNotice={setNotice} />;
+    }
+
+    if (activeApp === "resource_hub") {
+      return <ResourceHubApp onClose={() => setActiveApp(null)} onNotice={setNotice} />;
     }
 
     return activeApp in ICONS
