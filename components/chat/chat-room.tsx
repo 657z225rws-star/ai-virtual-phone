@@ -4484,7 +4484,10 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
 
         // 右滑引用跟随 / 左滑删除跟随：触屏走原生 touch 通道（见下方 effect），这里只负责鼠标拖动
         if (e.pointerType === "mouse") {
-            swipeGestureRef.current = { id: msgId, startX: anchor.x, startY: anchor.y, el: e.currentTarget as HTMLElement, dx: 0, dir: 0 };
+            // 位移与角标写在气泡外层 wrap 上（气泡 overflow:hidden 会裁掉内部角标）
+            const bubbleEl = e.currentTarget as HTMLElement;
+            const swipeEl = bubbleEl.closest<HTMLElement>(".chat-msg-content-wrap") || bubbleEl;
+            swipeGestureRef.current = { id: msgId, startX: anchor.x, startY: anchor.y, el: swipeEl, dx: 0, dir: 0 };
         }
         if (swipeReleaseTimerRef.current) {
             clearTimeout(swipeReleaseTimerRef.current);
@@ -4598,7 +4601,9 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                 const ox = getComputedStyle(n).overflowX;
                 if ((ox === "auto" || ox === "scroll") && n.scrollWidth > n.clientWidth + 2) return;
             }
-            g = { msgId, el: bubble, startX: e.touches[0].clientX, startY: e.touches[0].clientY, dx: 0, locked: false, dir: 0 };
+            // 位移与角标都写在气泡外层 wrap 上：气泡 overflow:hidden 会把写在自己内部的角标裁掉
+            const swipeEl = bubble.closest<HTMLElement>(".chat-msg-content-wrap") || bubble;
+            g = { msgId, el: swipeEl, startX: e.touches[0].clientX, startY: e.touches[0].clientY, dx: 0, locked: false, dir: 0 };
         };
 
         const onTouchMove = (e: TouchEvent) => {
@@ -5857,7 +5862,7 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                                             )
                                         )}
                                         {!isSilentThought && !isEmptyBubble && <div
-                                            className={`chat-msg-content-wrap flex flex-col min-w-0 max-w-[70%] ${isStandaloneHtmlPreview ? "chat-msg-content-wrap-html" : ""}`}
+                                            className={`chat-msg-content-wrap flex flex-col relative min-w-0 max-w-[70%] ${isStandaloneHtmlPreview ? "chat-msg-content-wrap-html" : ""}`}
                                             {...(isStandaloneHtmlPreview ? { "data-html": "true" } : {})}
                                         >
                                             {session.isGroup && msg.role !== "user" && (
@@ -5937,18 +5942,6 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                                             {/* Message Actions Popup */}
                                             {activeMessageId === msg.id && renderBubbleContextMenu(msg)}
 
-                                            {/* 右滑引用：跟随气泡出现的绿色小圆点提示（常驻隐藏，滑动时由手势逻辑直接改透明度） */}
-                                            <span
-                                                className="chat-swipe-quote-hint"
-                                                style={{ visibility: "hidden", opacity: 0 }}
-                                            />
-
-                                            {/* 左滑删除：跟随气泡出现的红色小圆点提示（右侧，常驻隐藏） */}
-                                            <span
-                                                className="chat-swipe-delete-hint"
-                                                style={{ visibility: "hidden", opacity: 0 }}
-                                            />
-
                                             <MessageBubble
                                                 msg={renderMsg}
                                                 displayContent={msg.displayProjected ? undefined : bubbleDisplayContent}
@@ -5970,7 +5963,12 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                                                 onActionSelect={(text) => chatTextInputRef.current?.appendText(text)}
                                                 defaultTranslationExpanded={session.collapseBilingualTranslation !== false ? false : true}
                                             />
-                                        </div>
+                                            </div>
+                                            {/* 角标放在气泡外层这层 wrap 上：气泡样式带 overflow:hidden，
+                                                放在气泡内部会被它自己裁剪成永远不可见（两个点从未显示过的根因）。
+                                                滑动位移也写在 wrap 上，角标跟着气泡边缘走 */}
+                                            <span className="chat-swipe-quote-hint" style={{ visibility: "hidden", opacity: 0 }} />
+                                            <span className="chat-swipe-delete-hint" style={{ visibility: "hidden", opacity: 0 }} />
                                         </div>}
                                         {msg.role !== "user" && !isSilentThought && !isEmptyBubble && hasFoldedPanel && (
                                             <button

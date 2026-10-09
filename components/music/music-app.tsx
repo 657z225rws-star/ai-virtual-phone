@@ -14,6 +14,7 @@ import {
     searchNetease, getNeteasePlayUrl, getNeteaseLyrics, getNeteaseSongDetail,
     testNeteaseConnection, getQrKey, getQrImage, checkQrStatus, checkLoginStatus,
     getUserPlaylists, getPlaylistTracks, saveNeteaseCookie, clearNeteaseCookie,
+    removeTracksFromPlaylist,
     getDailyRecommendSongs, getHotSearchDetail, getPersonalizedPlaylists,
     getRecommendResource, getToplists, getUserRecord, getRandomHotPlaylists,
     type NeteaseHotSearch, type NeteaseSearchResult,
@@ -323,6 +324,7 @@ export default function MusicApp({ onClose }: Props) {
                     onPlayNetease={handlePlayNetease}
                     onPlayInList={handlePlayNeteaseInList}
                     onPlayAll={handlePlayAllNetease}
+                    onNotice={showMusicToast}
                 />
             )}
 
@@ -899,15 +901,122 @@ function OnlineSearchTab({ player, formatTime, onPlayNetease, onPlayInList }: {
 
 // ── Playlists Tab ──
 // ── Playlist Detail (independent layer above tabs) ──
-function PlaylistDetail({ playlist, formatTime, onPlayNetease, onPlayInList, onPlayAll }: {
+function PlaylistDetail({ playlist, formatTime, onPlayNetease, onPlayInList, onPlayAll, onNotice }: {
     playlist: NeteasePlaylist;
     formatTime: (s: number) => string;
     onPlayNetease: (r: NeteaseSearchResult) => void;
     onPlayInList: (r: NeteaseSearchResult, list: NeteaseSearchResult[]) => void;
     onPlayAll: (results: NeteaseSearchResult[]) => void;
+    onNotice: (msg: string) => void;
 }) {
     const [tracks, setTracks] = useState<NeteaseSearchResult[]>([]);
     const [loadingTracks, setLoadingTracks] = useState(false);
+    const [deleteTarget, setDeleteTarget] = useState<NeteaseSearchResult | null>(null);
+    const [deleting, setDeleting] = useState(false);
+    // 左滑移除：与聊天消息的左滑删除同一套手感。触屏走原生 touch 通道（iOS 上 React 合成
+    // 事件会被滚动抢手势），位移直接写歌行 DOM；鼠标拖动走 pointer 通道。越过 56px 弹确认框。
+    const SWIPE_DEL_TRIGGER = 56;
+    const SWIPE_DEL_MAX = 84;
+    const rootRef = useRef<HTMLDivElement | null>(null);
+    const tracksRef = useRef<NeteaseSearchResult[]>([]);
+    useEffect(() => { tracksRef.current = tracks; }, [tracks]);
+    const swipeRowRef = useRef<{ id: number; el: HTMLElement; startX: number; startY: number; dx: number } | null>(null);
+    const swipeFiredRef = useRef(false);
+
+    const releaseSwipeRow = useCallback((el: HTMLElement) => {
+        el.style.transition = "transform 0.15s ease-out";
+        el.style.transform = "translateX(0px)";
+        const hint = el.querySelector<HTMLElement>(".music-swipe-delete-hint");
+        if (hint) hint.style.opacity = "0";
+        setTimeout(() => { el.style.transition = ""; el.style.transform = ""; }, 200);
+    }, []);
+
+    // 触屏左滑：事件委托到歌单详情根节点，锁定（左移超过 6px 且纵向意图不强）后每帧
+    // preventDefault 阻断滚动——滚动不启动就没有 pointercancel，手势始终跟手
+    useEffect(() => {
+        const root = rootRef.current;
+        if (!root) return;
+        let g: { id: number; el: HTMLElement; startX: number; startY: number; dx: number; locked: boolean } | null = null;
+
+        const onTouchStart = (e: TouchEvent) => {
+            if (e.touches.length !== 1) return;
+            const target = e.target;
+            if (!(target instanceof Element)) return;
+            const row = target.closest<HTMLElement>(".music-song");
+            if (!row || !root.contains(row)) return;
+            g = { id: Number(row.getAttribute("data-song-id")), el: row, startX: e.touches[0].clientX, startY: e.touches[0].clientY, dx: 0, locked: false };
+        };
+
+        const onTouchMove = (e: TouchEvent) => {
+            if (!g) return;
+            const t = e.touches[0];
+            if (!t) return;
+            const dx = t.clientX - g.startX;
+            const dy = t.clientY - g.startY;
+            if (!g.locked) {
+                // 纵向意图明确：让位给列表滚动
+                if (dy > Math.abs(dx) && dy > 12) { g = null; return; }
+                // 左滑意图明确：锁定为移除手势；右滑在歌单里没有语义，直接放弃
+                if (-dx > Math.max(dy, 6)) {
+                    g.locked = true;
+                    g.el.style.transition = "none";
+                    // 关键：music-song 的入场动画 music-fade-in 用 transform 做关键帧且 fill-mode:both，
+                    // 播完后 transform 仍被动画占用（优先级高于内联样式），不停掉它写的位移全部无效。
+                    // 动画早已播完且末帧=自然状态，停掉没有任何视觉变化
+                    g.el.style.animation = "none";
+                } else return;
+            }
+            e.preventDefault();
+            if (dx < 0) {
+                const mag = Math.min(-dx, SWIPE_DEL_MAX);
+                g.dx = -mag;
+                g.el.style.transform = `translateX(${-mag}px)`;
+                const hint = g.el.querySelector<HTMLElement>(".music-swipe-delete-hint");
+                if (hint) hint.style.opacity = String(Math.min(1, mag / SWIPE_DEL_TRIGGER));
+            }
+        };
+
+        const onTouchEnd = () => {
+            if (!g) return;
+            const { id, el, dx } = g;
+            g = null;
+            if (-dx >= SWIPE_DEL_TRIGGER) {
+                const song = tracksRef.current.find(s => s.id === id);
+                if (song) { swipeFiredRef.current = true; setDeleteTarget(song); }
+            }
+            releaseSwipeRow(el);
+        };
+
+        root.addEventListener("touchstart", onTouchStart, { passive: true });
+        root.addEventListener("touchmove", onTouchMove, { passive: false });
+        root.addEventListener("touchend", onTouchEnd, { passive: true });
+        root.addEventListener("touchcancel", onTouchEnd, { passive: true });
+        return () => {
+            root.removeEventListener("touchstart", onTouchStart);
+            root.removeEventListener("touchmove", onTouchMove);
+            root.removeEventListener("touchend", onTouchEnd);
+            root.removeEventListener("touchcancel", onTouchEnd);
+        };
+    }, [releaseSwipeRow]);
+
+    const handleDeleteFromPlaylist = useCallback(async (song: NeteaseSearchResult) => {
+        setDeleting(true);
+        try {
+            const result = await removeTracksFromPlaylist(playlist.id, [song.id]);
+            onNotice(result.message || (result.ok ? "已从歌单移除" : "移除失败"));
+            if (result.ok) {
+                setTracks(prev => {
+                    const next = prev.filter(t => t.id !== song.id);
+                    kvSet(`music-playlist-tracks-${playlist.id}`, JSON.stringify(next));
+                    return next;
+                });
+            }
+        } catch (err) {
+            onNotice(`移除失败：${err instanceof Error ? err.message : "网络错误"}`);
+        } finally {
+            setDeleting(false);
+        }
+    }, [playlist.id, onNotice]);
 
     useEffect(() => {
         let cancelled = false;
@@ -931,7 +1040,7 @@ function PlaylistDetail({ playlist, formatTime, onPlayNetease, onPlayInList, onP
     }, [playlist]);
 
     return (
-        <div className="music-playlist-detail">
+        <div className="music-playlist-detail" ref={rootRef}>
             <div className="music-playlist-detail-header">
                 <div className="music-playlist-detail-name">
                     {playlist.name}
@@ -951,7 +1060,64 @@ function PlaylistDetail({ playlist, formatTime, onPlayNetease, onPlayInList, onP
             ) : (
                 <div className="music-list">
                     {tracks.map((r, idx) => (
-                        <div key={r.id} className="music-song" style={{ animationDelay: `${Math.min(idx * 0.03, 0.4)}s` }} onClick={() => onPlayInList(r, tracks)}>
+                        <div
+                            key={r.id}
+                            data-song-id={r.id}
+                            className="music-song"
+                            style={{ animationDelay: `${Math.min(idx * 0.03, 0.4)}s`, userSelect: "none", WebkitUserSelect: "none", touchAction: "pan-y" }}
+                            onPointerDown={(e) => {
+                                // 鼠标左滑移除：触屏走上面的原生 touch 通道，这里只负责鼠标拖动
+                                if (e.pointerType !== "mouse" || e.button !== 0) return;
+                                swipeFiredRef.current = false;
+                                swipeRowRef.current = { id: r.id, el: e.currentTarget as HTMLElement, startX: e.clientX, startY: e.clientY, dx: 0 };
+                                try { (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId); } catch { }
+                            }}
+                            onPointerMove={(e) => {
+                                const sw = swipeRowRef.current;
+                                if (!sw || sw.el !== e.currentTarget) return;
+                                const sdx = e.clientX - sw.startX;
+                                const sdy = e.clientY - sw.startY;
+                                if (sdy > Math.abs(sdx) && sdy > 12) {
+                                    releaseSwipeRow(sw.el);
+                                    swipeRowRef.current = null;
+                                    return;
+                                }
+                                if (sdx < 0) {
+                                    const mag = Math.min(-sdx, SWIPE_DEL_MAX);
+                                    sw.dx = -mag;
+                                    sw.el.style.transition = "none";
+                                    // 同 touch 通道：停掉占用 transform 的入场动画，位移才能生效
+                                    sw.el.style.animation = "none";
+                                    sw.el.style.transform = `translateX(${-mag}px)`;
+                                    const hint = sw.el.querySelector<HTMLElement>(".music-swipe-delete-hint");
+                                    if (hint) hint.style.opacity = String(Math.min(1, mag / SWIPE_DEL_TRIGGER));
+                                }
+                            }}
+                            onPointerUp={() => {
+                                const sw = swipeRowRef.current;
+                                if (!sw) return;
+                                swipeRowRef.current = null;
+                                if (-sw.dx >= SWIPE_DEL_TRIGGER) {
+                                    const song = tracksRef.current.find(s => s.id === sw.id);
+                                    if (song) { swipeFiredRef.current = true; setDeleteTarget(song); }
+                                }
+                                releaseSwipeRow(sw.el);
+                            }}
+                            onPointerCancel={() => {
+                                const sw = swipeRowRef.current;
+                                if (!sw) return;
+                                swipeRowRef.current = null;
+                                releaseSwipeRow(sw.el);
+                            }}
+                            onContextMenu={(e) => e.preventDefault()}
+                            onClick={() => {
+                                // 左滑刚触发过就吞掉这次 click，避免弹删除框的同时把歌唱出来
+                                if (swipeFiredRef.current) { swipeFiredRef.current = false; return; }
+                                onPlayInList(r, tracks);
+                            }}
+                        >
+                            {/* 左滑移除：歌行右侧露出的红色小圆点（常驻透明，滑动时由手势逻辑改透明度） */}
+                            <span className="music-swipe-delete-hint" />
                             <div className="music-song-cover">
                                 {r.coverUrl ? <img src={r.coverUrl} alt="" /> : (
                                     <div className="music-song-cover-placeholder">
@@ -966,6 +1132,25 @@ function PlaylistDetail({ playlist, formatTime, onPlayNetease, onPlayInList, onP
                             <div className="music-song-duration">{formatTime(r.duration / 1000)}</div>
                         </div>
                     ))}
+                </div>
+            )}
+            {/* 长按歌曲弹出的删除确认框 */}
+            {deleteTarget && (
+                <div className="music-settings-modal-overlay" onClick={() => { if (!deleting) setDeleteTarget(null); }}>
+                    <div className="music-settings-modal-dialog music-confirm-dialog" onClick={e => e.stopPropagation()}>
+                        <div className="music-settings-header"><h2>从歌单移除</h2></div>
+                        <div className="music-settings-body">
+                            <div className="music-confirm-text">确定把「{deleteTarget.name}」从歌单「{playlist.name}」中移除吗？</div>
+                            <div className="music-settings-actions">
+                                <button className="music-settings-btn" disabled={deleting} onClick={() => setDeleteTarget(null)}>取消</button>
+                                <button
+                                    className="music-settings-btn music-settings-btn-danger"
+                                    disabled={deleting}
+                                    onClick={() => { const target = deleteTarget; setDeleteTarget(null); if (target) handleDeleteFromPlaylist(target); }}
+                                >{deleting ? "移除中..." : "移除"}</button>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             )}
         </div>
