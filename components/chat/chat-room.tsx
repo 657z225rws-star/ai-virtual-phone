@@ -1222,6 +1222,8 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
     const [isMultiSelectMode, setIsMultiSelectMode] = useState(false);
     const [selectedMessageIds, setSelectedMessageIds] = useState<Set<string>>(new Set());
     const [showConfirmMultiDelete, setShowConfirmMultiDelete] = useState(false);
+    // 左滑删除：手势松手后先弹确认，确认后才真正删（防误滑）
+    const [swipeDeleteTarget, setSwipeDeleteTarget] = useState<ChatMessage | null>(null);
     const [expandedMonologueId, setExpandedThinkingId] = useState<string | null>(null);
     // 思维链底部弹窗：存当前查看的 reasoning 文本，null = 关闭
     const [reasoningSheetText, setReasoningSheetText] = useState<string | null>(null);
@@ -1271,7 +1273,7 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
 
     // 右滑引用手势状态（与长按共用 pointer 事件，移动超过 10px 会取消长按，互不干扰）。
     // 跟随位移直接写气泡 DOM，不经过 setState——长列表每帧重渲染在手机上会卡成"拉不动"。
-    const swipeGestureRef = useRef<{ id: string; startX: number; startY: number; el: HTMLElement; dx: number } | null>(null);
+    const swipeGestureRef = useRef<{ id: string; startX: number; startY: number; el: HTMLElement; dx: number; dir: 0 | 1 | -1 } | null>(null);
     const swipeReleaseTimerRef = useRef<NodeJS.Timeout | null>(null);
 
     const scrollRef = useRef<HTMLDivElement>(null);
@@ -4456,6 +4458,11 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
             hint.style.opacity = "0";
             hint.style.visibility = "hidden";
         }
+        const delHint = el.querySelector<HTMLElement>(".chat-swipe-delete-hint");
+        if (delHint) {
+            delHint.style.opacity = "0";
+            delHint.style.visibility = "hidden";
+        }
         if (swipeReleaseTimerRef.current) clearTimeout(swipeReleaseTimerRef.current);
         swipeReleaseTimerRef.current = setTimeout(() => {
             el.style.transition = "";
@@ -4475,9 +4482,9 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
         startPosRef.current = anchor;
         longPressTriggeredRef.current = false;
 
-        // 右滑引用跟随：触屏走原生 touch 通道（见下方 effect），这里只负责鼠标拖动
+        // 右滑引用跟随 / 左滑删除跟随：触屏走原生 touch 通道（见下方 effect），这里只负责鼠标拖动
         if (e.pointerType === "mouse") {
-            swipeGestureRef.current = { id: msgId, startX: anchor.x, startY: anchor.y, el: e.currentTarget as HTMLElement, dx: 0 };
+            swipeGestureRef.current = { id: msgId, startX: anchor.x, startY: anchor.y, el: e.currentTarget as HTMLElement, dx: 0, dir: 0 };
         }
         if (swipeReleaseTimerRef.current) {
             clearTimeout(swipeReleaseTimerRef.current);
@@ -4493,13 +4500,18 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
     };
 
     const handleMessagePointerUp = (e: React.PointerEvent, msg?: ChatMessage) => {
-        // 右滑引用：松手时位移越过阈值且基本是横向滑动，直接填入引用条
+        // 松手时位移越过阈值且基本是横向滑动：右滑填入引用条，左滑弹删除确认
         const sw = swipeGestureRef.current;
         if (sw && msg && sw.id === msg.id) {
             const dy = Math.abs(e.clientY - sw.startY);
-            if (sw.dx >= SWIPE_QUOTE_TRIGGER_PX && dy < 48) {
-                setQuotingMessage(msg);
-                setActiveMessageId(null);
+            if (dy < 48) {
+                if (sw.dir === 1 && sw.dx >= SWIPE_QUOTE_TRIGGER_PX) {
+                    setQuotingMessage(msg);
+                    setActiveMessageId(null);
+                } else if (sw.dir === -1 && -sw.dx >= SWIPE_QUOTE_TRIGGER_PX) {
+                    setSwipeDeleteTarget(msg);
+                    setActiveMessageId(null);
+                }
             }
             releaseSwipeBubble(sw);
             swipeGestureRef.current = null;
@@ -4539,12 +4551,13 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
         swipeEditingRef.current = editingMessageId;
     });
 
-    // 触屏右滑引用：走原生 touch 事件通道（React 合成 pointer 事件在 iOS 上会被浏览器
-    // 滚动抢手势）。事件委托到 document：按住气泡横向滑动超过 6px 即"锁定"，此后每帧
-    // preventDefault 阻断滚动（浏览器无缘启动滚动、不会发 pointercancel），位移直接写
-    // 气泡 DOM。鼠标拖动仍走 pointer 通道。iOS 真机已实测跟手（2026-10-05）。
+    // 触屏滑动手势：右滑引用 + 左滑删除，走原生 touch 事件通道（React 合成 pointer
+    // 事件在 iOS 上会被浏览器滚动抢手势）。事件委托到 document：按住气泡横向滑动
+    // 超过 6px 即"锁定"（右滑=引用，左滑=删除），此后每帧 preventDefault 阻断滚动
+    // （浏览器无缘启动滚动、不会发 pointercancel），位移直接写气泡 DOM。鼠标拖动
+    // 仍走 pointer 通道。iOS 真机已实测跟手（2026-10-05）。
     useEffect(() => {
-        let g: { msgId: string; el: HTMLElement; startX: number; startY: number; dx: number; locked: boolean } | null = null;
+        let g: { msgId: string; el: HTMLElement; startX: number; startY: number; dx: number; locked: boolean; dir: 0 | 1 | -1 } | null = null;
         let resetTimer: ReturnType<typeof setTimeout> | null = null;
 
         const setHint = (el: HTMLElement, dx: number) => {
@@ -4554,10 +4567,18 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
             hint.style.opacity = String(Math.max(0, Math.min(1, dx / SWIPE_QUOTE_TRIGGER_PX)));
         };
 
+        const setDeleteHint = (el: HTMLElement, mag: number) => {
+            const hint = el.querySelector<HTMLElement>(".chat-swipe-delete-hint");
+            if (!hint) return;
+            hint.style.visibility = mag > 14 ? "visible" : "hidden";
+            hint.style.opacity = String(Math.max(0, Math.min(1, mag / SWIPE_QUOTE_TRIGGER_PX)));
+        };
+
         const release = (el: HTMLElement) => {
             el.style.transition = "transform 0.15s ease-out";
             el.style.transform = "translateX(0px)";
             setHint(el, 0);
+            setDeleteHint(el, 0);
             if (resetTimer) clearTimeout(resetTimer);
             resetTimer = setTimeout(() => { el.style.transition = ""; el.style.transform = ""; }, 200);
         };
@@ -4577,7 +4598,7 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                 const ox = getComputedStyle(n).overflowX;
                 if ((ox === "auto" || ox === "scroll") && n.scrollWidth > n.clientWidth + 2) return;
             }
-            g = { msgId, el: bubble, startX: e.touches[0].clientX, startY: e.touches[0].clientY, dx: 0, locked: false };
+            g = { msgId, el: bubble, startX: e.touches[0].clientX, startY: e.touches[0].clientY, dx: 0, locked: false, dir: 0 };
         };
 
         const onTouchMove = (e: TouchEvent) => {
@@ -4589,29 +4610,41 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
             if (!g.locked) {
                 // 纵向意图明确：让位给页面滚动
                 if (dy > Math.abs(dx) && dy > 12) { g = null; return; }
-                // 右滑意图明确（横向位移超过纵向且超过 6px）：锁定为引用手势
+                // 横向意图明确（横向位移超过纵向且超过 6px）：右滑锁定为引用，左滑锁定为删除
                 if (dx > Math.max(dy, 6)) {
                     g.locked = true;
+                    g.dir = 1;
+                    g.el.style.transition = "none";
+                } else if (-dx > Math.max(dy, 6)) {
+                    g.locked = true;
+                    g.dir = -1;
                     g.el.style.transition = "none";
                 } else return;
             }
             // 锁定后每帧阻断滚动——这是"跟手"的关键：滚动不启动就没有 pointercancel
             e.preventDefault();
-            if (dx > 0) {
+            if (g.dir === 1 && dx > 0) {
                 g.dx = Math.min(dx, SWIPE_QUOTE_MAX_PX);
                 g.el.style.transform = `translateX(${g.dx}px)`;
                 setHint(g.el, g.dx);
+            } else if (g.dir === -1 && dx < 0) {
+                const mag = Math.min(-dx, SWIPE_QUOTE_MAX_PX);
+                g.dx = -mag;
+                g.el.style.transform = `translateX(${-mag}px)`;
+                setDeleteHint(g.el, mag);
             }
         };
 
         const onTouchEnd = () => {
             if (!g) return;
-            const { msgId, el, dx } = g;
+            const { msgId, el, dx, dir } = g;
             g = null;
-            let quoted = false;
-            if (dx >= SWIPE_QUOTE_TRIGGER_PX) {
+            if (dir === 1 && dx >= SWIPE_QUOTE_TRIGGER_PX) {
                 const msg = visibleMessagesRef.current.find(m => m.id === msgId);
-                if (msg) { setQuotingMessage(msg); setActiveMessageId(null); quoted = true; }
+                if (msg) { setQuotingMessage(msg); setActiveMessageId(null); }
+            } else if (dir === -1 && -dx >= SWIPE_QUOTE_TRIGGER_PX) {
+                const msg = visibleMessagesRef.current.find(m => m.id === msgId);
+                if (msg) { setSwipeDeleteTarget(msg); setActiveMessageId(null); }
             }
             release(el);
         };
@@ -5856,7 +5889,7 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                                                             }
                                                         }
                                                     }
-                                                    // 右滑引用：气泡跟随手指/鼠标右移（直接写 DOM，不走 setState）；纵向滑动时交还给浏览器滚动
+                                                    // 滑动手势：气泡跟随鼠标横移（直接写 DOM，不走 setState）；纵向滑动时交还给浏览器滚动
                                                     const sw = swipeGestureRef.current;
                                                     if (sw && sw.id === msg.id) {
                                                         const sdx = e.clientX - sw.startX;
@@ -5867,12 +5900,24 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                                                         } else if (sdx > 0) {
                                                             const clamped = Math.min(sdx, SWIPE_QUOTE_MAX_PX);
                                                             sw.dx = clamped;
+                                                            sw.dir = 1;
                                                             sw.el.style.transition = "none";
                                                             sw.el.style.transform = `translateX(${clamped}px)`;
                                                             const hint = sw.el.querySelector<HTMLElement>(".chat-swipe-quote-hint");
                                                             if (hint) {
                                                                 hint.style.visibility = clamped > 14 ? "visible" : "hidden";
                                                                 hint.style.opacity = String(Math.min(1, clamped / SWIPE_QUOTE_TRIGGER_PX));
+                                                            }
+                                                        } else if (sdx < 0) {
+                                                            const mag = Math.min(-sdx, SWIPE_QUOTE_MAX_PX);
+                                                            sw.dx = -mag;
+                                                            sw.dir = -1;
+                                                            sw.el.style.transition = "none";
+                                                            sw.el.style.transform = `translateX(${-mag}px)`;
+                                                            const delHint = sw.el.querySelector<HTMLElement>(".chat-swipe-delete-hint");
+                                                            if (delHint) {
+                                                                delHint.style.visibility = mag > 14 ? "visible" : "hidden";
+                                                                delHint.style.opacity = String(Math.min(1, mag / SWIPE_QUOTE_TRIGGER_PX));
                                                             }
                                                         }
                                                     }
@@ -5895,6 +5940,12 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                                             {/* 右滑引用：跟随气泡出现的绿色小圆点提示（常驻隐藏，滑动时由手势逻辑直接改透明度） */}
                                             <span
                                                 className="chat-swipe-quote-hint"
+                                                style={{ visibility: "hidden", opacity: 0 }}
+                                            />
+
+                                            {/* 左滑删除：跟随气泡出现的红色小圆点提示（右侧，常驻隐藏） */}
+                                            <span
+                                                className="chat-swipe-delete-hint"
                                                 style={{ visibility: "hidden", opacity: 0 }}
                                             />
 
@@ -6092,6 +6143,23 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                     cancelLabel="取消"
                     onConfirm={handleMultiDeleteConfirmed}
                     onCancel={() => setShowConfirmMultiDelete(false)}
+                />
+            )}
+
+            {swipeDeleteTarget && (
+                <ConfirmDialog
+                    title="删除这条消息？"
+                    message="左滑触发删除。消息删除后无法恢复。"
+                    icon={AlertCircle}
+                    variant="danger"
+                    confirmLabel="删除"
+                    cancelLabel="取消"
+                    onConfirm={() => {
+                        const id = swipeDeleteTarget.id;
+                        setSwipeDeleteTarget(null);
+                        handleDeleteMessage(id);
+                    }}
+                    onCancel={() => setSwipeDeleteTarget(null)}
                 />
             )}
 

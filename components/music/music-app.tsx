@@ -139,10 +139,8 @@ export default function MusicApp({ onClose }: Props) {
     };
 
     const handlePlay = (track: MusicTrack) => {
-        // Add this single track to front of queue (if not already in it)
-        if (!player.queue.some(t => t.id === track.id)) {
-            player.setQueue([track, ...player.queue]);
-        }
+        // 点击本地曲库任一首：整个播放队列切换为本地曲库，并从点击的那首开始
+        player.setQueue(tracks);
         player.playTrack(track);
     };
 
@@ -212,6 +210,36 @@ export default function MusicApp({ onClose }: Props) {
         const track = toMusicTrack(playable.song, { lyrics, coverUrl: detail?.coverUrl, name: detail?.name, artists: detail?.artists });
         player.playUrl(playable.url, track);
         if (playable.index > 0) showMusicToast(`已跳过 ${playable.index} 首不可播放歌曲`);
+    }, [beginMusicLoadingToast, player, showMusicToast, toMusicTrack]);
+
+    /** 从歌单里点播一首：整个播放队列替换为该歌单，并从点击的那首开始放（不可播自动顺延） */
+    const handlePlayNeteaseInList = useCallback(async (result: NeteaseSearchResult, list: NeteaseSearchResult[]) => {
+        if (list.length === 0) return;
+        const startIdx = Math.max(0, list.findIndex(r => r.id === result.id));
+        player.setQueue(list.map(r => toMusicTrack(r)));
+
+        beginMusicLoadingToast(`netease_${result.id}`);
+        let playable: { song: NeteaseSearchResult; url: string; index: number } | null = null;
+        for (let i = 0; i < list.length; i++) {
+            const song = list[(startIdx + i) % list.length];
+            const url = await getNeteasePlayUrl(song.id);
+            if (url) {
+                playable = { song, url, index: (startIdx + i) % list.length };
+                break;
+            }
+        }
+
+        if (!playable) {
+            showMusicToast("歌单内暂无可播放歌曲");
+            return;
+        }
+
+        beginMusicLoadingToast(`netease_${playable.song.id}`);
+        const detail = await getNeteaseSongDetail(playable.song.id);
+        const lyrics = await getNeteaseLyrics(playable.song.id);
+        const track = toMusicTrack(playable.song, { lyrics, coverUrl: detail?.coverUrl, name: detail?.name, artists: detail?.artists });
+        player.playUrl(playable.url, track);
+        if (playable.song.id !== result.id) showMusicToast(`「${result.name}」暂不可播，已从下一首可播歌曲开始`);
     }, [beginMusicLoadingToast, player, showMusicToast, toMusicTrack]);
 
     const formatTime = (s: number) => {
@@ -293,6 +321,7 @@ export default function MusicApp({ onClose }: Props) {
                     playlist={activePlaylist}
                     formatTime={formatTime}
                     onPlayNetease={handlePlayNetease}
+                    onPlayInList={handlePlayNeteaseInList}
                     onPlayAll={handlePlayAllNetease}
                 />
             )}
@@ -302,6 +331,7 @@ export default function MusicApp({ onClose }: Props) {
                 <RecommendTab
                     formatTime={formatTime}
                     onPlayNetease={handlePlayNetease}
+                    onPlayInList={handlePlayNeteaseInList}
                     onPlayAll={handlePlayAllNetease}
                     onOpenPlaylist={(playlist) => {
                         setActivePlaylist(playlist);
@@ -313,6 +343,7 @@ export default function MusicApp({ onClose }: Props) {
                 <MineTab
                     formatTime={formatTime}
                     onPlayNetease={handlePlayNetease}
+                    onPlayInList={handlePlayNeteaseInList}
                     onOpenPlaylist={setActivePlaylist}
                     playlists={playlists}
                     loading={playlistsLoading}
@@ -336,7 +367,7 @@ export default function MusicApp({ onClose }: Props) {
             )}
 
             {!activePlaylist && tab === "search" && hasNetease && (
-                <OnlineSearchTab player={player} formatTime={formatTime} onPlayNetease={handlePlayNetease} />
+                <OnlineSearchTab player={player} formatTime={formatTime} onPlayNetease={handlePlayNetease} onPlayInList={handlePlayNeteaseInList} />
             )}
 
             {/* Floating buttons */}
@@ -431,9 +462,10 @@ export default function MusicApp({ onClose }: Props) {
 }
 
 // ── Recommend Tab ──
-function RecommendTab({ formatTime, onPlayNetease, onPlayAll, onOpenPlaylist }: {
+function RecommendTab({ formatTime, onPlayNetease, onPlayInList, onPlayAll, onOpenPlaylist }: {
     formatTime: (s: number) => string;
     onPlayNetease: (r: NeteaseSearchResult) => void;
+    onPlayInList: (r: NeteaseSearchResult, list: NeteaseSearchResult[]) => void;
     onPlayAll: (results: NeteaseSearchResult[]) => void;
     onOpenPlaylist: (playlist: NeteasePlaylist) => void;
 }) {
@@ -518,7 +550,7 @@ function RecommendTab({ formatTime, onPlayNetease, onPlayAll, onOpenPlaylist }: 
                             {dailyOpen && (
                                 <div className="music-list music-list-compact">
                                     {dailySongs.slice(0, 8).map((song, idx) => (
-                                        <NeteaseSongRow key={song.id} song={song} index={idx} formatTime={formatTime} onPlay={onPlayNetease} />
+                                        <NeteaseSongRow key={song.id} song={song} index={idx} formatTime={formatTime} onPlay={(s) => onPlayInList(s, dailySongs)} />
                                     ))}
                                 </div>
                             )}
@@ -582,9 +614,10 @@ function RecommendTab({ formatTime, onPlayNetease, onPlayAll, onOpenPlaylist }: 
 }
 
 // ── Mine Tab ──
-function MineTab({ formatTime, onPlayNetease, onOpenPlaylist, playlists, loading }: {
+function MineTab({ formatTime, onPlayNetease, onPlayInList, onOpenPlaylist, playlists, loading }: {
     formatTime: (s: number) => string;
     onPlayNetease: (r: NeteaseSearchResult) => void;
+    onPlayInList: (r: NeteaseSearchResult, list: NeteaseSearchResult[]) => void;
     onOpenPlaylist: (playlist: NeteasePlaylist) => void;
     playlists: NeteasePlaylist[];
     loading: boolean;
@@ -625,7 +658,7 @@ function MineTab({ formatTime, onPlayNetease, onOpenPlaylist, playlists, loading
                     {recentOpen && (
                         <div className="music-list music-list-compact">
                             {recentTracks.slice(0, 8).map((song, idx) => (
-                                <NeteaseSongRow key={song.id} song={song} index={idx} formatTime={formatTime} onPlay={onPlayNetease} />
+                                <NeteaseSongRow key={song.id} song={song} index={idx} formatTime={formatTime} onPlay={(s) => onPlayInList(s, recentTracks)} />
                             ))}
                         </div>
                     )}
@@ -788,10 +821,11 @@ function SongList({ tracks, player, formatTime, onDelete, onPlay }: {
 }
 
 // ── Online Search Tab ──
-function OnlineSearchTab({ player, formatTime, onPlayNetease }: {
+function OnlineSearchTab({ player, formatTime, onPlayNetease, onPlayInList }: {
     player: MusicControlsValue;
     formatTime: (s: number) => string;
     onPlayNetease: (r: NeteaseSearchResult) => void;
+    onPlayInList: (r: NeteaseSearchResult, list: NeteaseSearchResult[]) => void;
 }) {
     const [query, setQuery] = useState("");
     const [results, setResults] = useState<NeteaseSearchResult[]>([]);
@@ -833,7 +867,7 @@ function OnlineSearchTab({ player, formatTime, onPlayNetease }: {
             {results.length > 0 ? (
                 <div className="music-list">
                     {results.map((r, idx) => (
-                        <div key={r.id} className="music-song" style={{ animationDelay: `${Math.min(idx * 0.04, 0.5)}s` }} onClick={() => onPlayNetease(r)}>
+                        <div key={r.id} className="music-song" style={{ animationDelay: `${Math.min(idx * 0.04, 0.5)}s` }} onClick={() => onPlayInList(r, results)}>
                             <div className="music-song-cover">
                                 {r.coverUrl ? <img src={r.coverUrl} alt="" /> : (
                                     <div className="music-song-cover-placeholder">
@@ -865,10 +899,11 @@ function OnlineSearchTab({ player, formatTime, onPlayNetease }: {
 
 // ── Playlists Tab ──
 // ── Playlist Detail (independent layer above tabs) ──
-function PlaylistDetail({ playlist, formatTime, onPlayNetease, onPlayAll }: {
+function PlaylistDetail({ playlist, formatTime, onPlayNetease, onPlayInList, onPlayAll }: {
     playlist: NeteasePlaylist;
     formatTime: (s: number) => string;
     onPlayNetease: (r: NeteaseSearchResult) => void;
+    onPlayInList: (r: NeteaseSearchResult, list: NeteaseSearchResult[]) => void;
     onPlayAll: (results: NeteaseSearchResult[]) => void;
 }) {
     const [tracks, setTracks] = useState<NeteaseSearchResult[]>([]);
@@ -898,7 +933,12 @@ function PlaylistDetail({ playlist, formatTime, onPlayNetease, onPlayAll }: {
     return (
         <div className="music-playlist-detail">
             <div className="music-playlist-detail-header">
-                <div className="music-playlist-detail-name">{playlist.name}<span className="music-playlist-detail-count">{playlist.trackCount}首</span></div>
+                <div className="music-playlist-detail-name">
+                    {playlist.name}
+                    {/* 数字用实际加载到的曲目数：网易云元数据里的 trackCount 会把已下架/失效的歌也计入，
+                        批量取详情时那些歌拿不回来，导致"标称 55 实际 35"这类对不上（数据源如此，非客户端丢歌） */}
+                    <span className="music-playlist-detail-count">{loadingTracks ? playlist.trackCount : tracks.length}首</span>
+                </div>
                     {tracks.length > 0 && (
                         <button className="music-playlist-play-all" onClick={() => onPlayAll(tracks)}>
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z" /></svg>
@@ -911,7 +951,7 @@ function PlaylistDetail({ playlist, formatTime, onPlayNetease, onPlayAll }: {
             ) : (
                 <div className="music-list">
                     {tracks.map((r, idx) => (
-                        <div key={r.id} className="music-song" style={{ animationDelay: `${Math.min(idx * 0.03, 0.4)}s` }} onClick={() => onPlayNetease(r)}>
+                        <div key={r.id} className="music-song" style={{ animationDelay: `${Math.min(idx * 0.03, 0.4)}s` }} onClick={() => onPlayInList(r, tracks)}>
                             <div className="music-song-cover">
                                 {r.coverUrl ? <img src={r.coverUrl} alt="" /> : (
                                     <div className="music-song-cover-placeholder">

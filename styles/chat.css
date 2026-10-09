@@ -6993,3 +6993,18 @@ html[data-theme="dark"] .wallet-balance-action {
   z-index: 3;
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.18);
 }
+
+/* 左滑删除：气泡右侧的红色小圆点提示（与左侧绿色引用点镜像） */
+.chat-swipe-delete-hint {
+  position: absolute;
+  top: 50%;
+  right: -13px;
+  width: 9px;
+  height: 9px;
+  transform: translateY(-50%);
+  border-radius: 999px;
+  background: var(--c-danger, #FF3B30);
+  pointer-events: none;
+  z-index: 3;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.18);
+}
