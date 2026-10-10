@@ -23,7 +23,7 @@ import {
 } from "lucide-react";
 import { DATA_MODULES, getLightModuleIds } from "@/lib/data-management/modules";
 import { BINDING_ACCENTS, CONTENT_APP_ACCENTS } from "@/lib/ui-accent-colors";
-import { Input, Select, Toggle } from "@/components/ui/form";
+import { Input, Select, Toggle, SecretInput } from "@/components/ui/form";
 import { ConfirmDialog } from "@/components/ui/modal";
 import { CloudUpload } from "lucide-react";
 import {
@@ -718,12 +718,10 @@ export function DataManagement({ onNotice }: DataManagementProps) {
             </label>
             <label className="data-cloud-field">
               <span className="menu-desc ml-1">service_role key</span>
-              <Input
-                type="password"
+              <SecretInput
                 value={cloudConfig.key}
                 onChange={(e) => updateCloud({ key: e.target.value })}
                 placeholder="eyJhbGci..."
-                spellCheck={false}
               />
             </label>
 

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useLayoutEffect, useCallback, useRef, createContext, type CSSProperties, type ReactNode } from "react";
-import { Check, ChevronRight, Clock, Cloud, CloudSun, Database, FileText, Fingerprint, Globe, HardDrive, Image, Info, KeyRound, Layers, Link2, Loader2, LogOut, MessageSquare, Mic, BellRing, SlidersHorizontal, UserCircle, Wrench, X } from "lucide-react";
+import { Check, ChevronRight, Clock, Cloud, CloudSun, Database, FileText, Fingerprint, Globe, HardDrive, Image, Info, KeyRound, Layers, Link2, Loader2, LogOut, MessageSquare, Mic, BellRing, Radar, SlidersHorizontal, UserCircle, Wrench, X } from "lucide-react";
 import { ConfirmDialog } from "./ui/modal";
 import { useAccount } from "@/lib/account-context";
 import { changeAccountPassword } from "@/lib/account-client";
@@ -19,6 +19,7 @@ import { WeixinSettings } from "./settings/weixin-settings";
 import { ToolboxSettings } from "./settings/toolbox-settings";
 import { ProactiveCloudSettings } from "./settings/proactive-cloud-settings";
 import { ProactiveApiSettings } from "./settings/proactive-api-settings";
+import { ActivityWatchSettings } from "./settings/activity-watch-settings";
 import { ModerationCenter } from "./settings/moderation-center";
 import { fetchIsAdmin } from "@/lib/moderation-client";
 import { isSelfHostedModeEnabled } from "@/lib/self-hosting";
@@ -55,6 +56,7 @@ type SubPage =
     | "weixin"
     | "toolbox"
     | "proactive"
+    | "activityWatch"
     | "moderation"
     | "about";
 
@@ -71,6 +73,7 @@ const SETTINGS_MENU = [
     { id: "weixin", icon: MessageSquare, label: "微信接入", desc: "iLink Bot", iconColor: CONTENT_APP_ACCENTS.chat },
     { id: "toolbox", icon: Wrench, label: "聊天工具箱", desc: "外部工具调用", iconColor: BINDING_ACCENTS.voice },
     { id: "proactive", icon: BellRing, label: "主动消息", desc: "云端到点主动联系", iconColor: CONTENT_APP_ACCENTS.chat },
+    { id: "activityWatch", icon: Radar, label: "活动感知", desc: undefined, iconColor: CONTENT_APP_ACCENTS.chat },
     { id: "identity", icon: UserCircle, label: "用户身份", desc: "个人信息", iconColor: BINDING_ACCENTS.identity },
     { id: "about", icon: Info, label: "关于与声明", desc: "版本与协议", iconColor: BINDING_ACCENTS.memory },
 ] as const;
@@ -325,6 +328,8 @@ export function PhoneSettingsApp({ onClose, onNotice }: SettingsPageProps) {
                 return <ToolboxSettings />;
             case "proactive":
                 return <ProactiveCloudSettings onNotice={onNotice} />;
+            case "activityWatch":
+                return <ActivityWatchSettings onNotice={onNotice} />;
             case "moderation":
                 return <ModerationCenter onNotice={onNotice} />;
             case "identity":
@@ -421,7 +426,7 @@ export function PhoneSettingsApp({ onClose, onNotice }: SettingsPageProps) {
                         <CardGrid
                             label="Connections"
                             labelClassName="settings-menu-section-title"
-                            items={SETTINGS_MENU.filter(item => ["weixin", "toolbox", "proactive"].includes(item.id)).map(makeCardItem)}
+                            items={SETTINGS_MENU.filter(item => ["weixin", "toolbox", "proactive", "activityWatch"].includes(item.id)).map(makeCardItem)}
                         />
                         <div className="settings-realtime-section">
                             <h3 className="settings-menu-section-title">Realtime</h3>

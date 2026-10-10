@@ -37,7 +37,7 @@ import {
 } from "@/lib/internal-capability-storage";
 import { discoverMcpTools, startMcpOAuth } from "@/lib/tool-executor";
 import { SettingsContext } from "@/components/phone-settings-app";
-import { Toggle, Input, Textarea, Select } from "@/components/ui/form";
+import { Toggle, Input, Textarea, Select, SecretInput } from "@/components/ui/form";
 import { ConfirmDialog, ContentDialog } from "@/components/ui/modal";
 
 type ToolExportEntry = {
@@ -1304,7 +1304,7 @@ export function ToolboxSettings() {
                                 {apiKeyField && (
                                 <div className="flex flex-col gap-1">
                                     <label className="menu-desc ml-1">API Key</label>
-                                    <Input type="password" value={editRest.fixedParams?.[apiKeyField] ?? ""} placeholder="填入你的 API Key"
+                                    <SecretInput value={editRest.fixedParams?.[apiKeyField] ?? ""} placeholder="填入你的 API Key"
                                         onChange={e => setR({ fixedParams: { ...editRest.fixedParams, [apiKeyField]: e.target.value } })} />
                                     <span className="menu-desc ml-1">
                                         {editRest.id === "builtin_weather" && "去 weatherapi.com 免费注册获取"}
@@ -1571,8 +1571,7 @@ export function ToolboxSettings() {
                             </div>
                             <div className="flex flex-col gap-1">
                                 <label className="menu-desc ml-1">访问 Token（可选）</label>
-                                <Input
-                                    type="password"
+                                <SecretInput
                                     value={editMcp.accessToken || ""}
                                     placeholder="需要鉴权的 MCP 填这里，会作为 Bearer Token 发送"
                                     onChange={e => setM({
@@ -1691,8 +1690,7 @@ export function ToolboxSettings() {
                                 {webSearchSettings.provider === "tavily" ? (
                                     <div className="flex flex-col gap-1">
                                         <label className="menu-desc ml-1">Tavily API Key</label>
-                                        <Input
-                                            type="password"
+                                        <SecretInput
                                             value={webSearchSettings.tavilyApiKey ?? ""}
                                             placeholder="tvly-..."
                                             onChange={e => updateWebSearchSettings({ tavilyApiKey: e.target.value })}
@@ -1720,8 +1718,7 @@ export function ToolboxSettings() {
                                         </div>
                                         <div className="flex flex-col gap-1">
                                             <label className="menu-desc ml-1">鉴权值（可选）</label>
-                                            <Input
-                                                type="password"
+                                            <SecretInput
                                                 value={webSearchSettings.customApiKey ?? ""}
                                                 placeholder="Bearer sk-..."
                                                 onChange={e => updateWebSearchSettings({ customApiKey: e.target.value })}

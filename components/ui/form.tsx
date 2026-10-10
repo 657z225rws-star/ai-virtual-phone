@@ -1,6 +1,8 @@
 "use client";
 
-import type { InputHTMLAttributes, TextareaHTMLAttributes, SelectHTMLAttributes, ReactNode } from "react";
+import { useState } from "react";
+import type { CSSProperties, InputHTMLAttributes, TextareaHTMLAttributes, SelectHTMLAttributes, ReactNode } from "react";
+import { Eye, EyeOff } from "lucide-react";
 
 /* ── Input ── */
 type InputProps = InputHTMLAttributes<HTMLInputElement> & {
@@ -9,6 +11,45 @@ type InputProps = InputHTMLAttributes<HTMLInputElement> & {
 
 export function Input({ className, ...rest }: InputProps) {
   return <input className={`ui-input ${className ?? ""}`} {...rest} />;
+}
+
+/* ── SecretInput（密钥/Token 输入框）──
+ * 默认明文显示，右侧小眼睛点击后切换为圆点隐藏。
+ * 之前所有密钥框都用 type="password"，浏览器对密码框有铁律：
+ * 中文输入法被锁死、剪贴板面板禁用、粘贴后只见圆点，极难核对。
+ */
+type SecretInputProps = InputHTMLAttributes<HTMLInputElement> & {
+  className?: string;
+  wrapperClassName?: string;
+  wrapperStyle?: CSSProperties;
+};
+
+export function SecretInput({ className = "ui-input", wrapperClassName, wrapperStyle, disabled, ...rest }: SecretInputProps) {
+  const [hidden, setHidden] = useState(false);
+  return (
+    <div className={`flex min-w-0 items-center gap-2 ${wrapperClassName ?? ""}`} style={wrapperStyle}>
+      <input
+        type={hidden ? "password" : "text"}
+        className={`${className} min-w-0 flex-1`}
+        autoCapitalize="off"
+        autoCorrect="off"
+        spellCheck={false}
+        disabled={disabled}
+        {...rest}
+      />
+      <button
+        type="button"
+        onClick={() => setHidden(v => !v)}
+        title={hidden ? "显示内容" : "隐藏内容"}
+        aria-label={hidden ? "显示内容" : "隐藏内容"}
+        disabled={disabled}
+        className="ui-btn ui-btn-soft-action shrink-0 !px-2.5"
+        style={{ height: 36, width: 36, padding: 0 }}
+      >
+        {hidden ? <Eye size={16} /> : <EyeOff size={16} />}
+      </button>
+    </div>
+  );
 }
 
 /* ── Textarea ── */

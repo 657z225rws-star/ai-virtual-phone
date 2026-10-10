@@ -69,6 +69,7 @@ const cancelledWhileFiring = new Set<string>(); // cancelled during in-flight AP
 const timedWakeFiringSet = new Set<string>();
 const periodCareFiringSet = new Set<string>();
 const backgroundReplyFiringSet = new Set<string>();
+const activityFiringSet = new Set<string>();
 let lastPeriodCarePollAt = 0;
 
 // ── Public API ─────────────────────────────────────────────
@@ -174,6 +175,58 @@ export function cancelFollowUp(sessionId: string) {
     // If an API call is already in-flight, mark it for cancellation
     if (firingSet.has(sessionId)) {
         cancelledWhileFiring.add(sessionId);
+    }
+}
+
+/** 活动感知主动关怀：观察器察觉用户在虚拟手机里的活动（如听歌）后，
+ *  让角色主动发起一条自然消息。activityContext 是给模型看的活动快照文本
+ *  （由 activity-watcher 组装），生成走 chat-engine 同一条 prompt 管线，
+ *  音乐氛围注入会自动生效。返回本次生成的结局：ok=false 表示调用出错，
+ *  hasVisible=false 表示角色选择静默（只留下内心/状态，没有正文）。 */
+export async function fireActivityProactive(sessionId: string, activityContext: string): Promise<{ ok: boolean; hasVisible: boolean; error?: string }> {
+    if (activityFiringSet.has(sessionId)) return { ok: false, hasVisible: false, error: "该会话已有一次生成在进行中" };
+    const session = loadChatSessions().find(s => s.id === sessionId);
+    if (!session) return { ok: false, hasVisible: false, error: "目标会话不存在" };
+
+    activityFiringSet.add(sessionId);
+    try {
+        const latestMessages = loadChatMessages(session.id);
+        console.log("[ActivityCare] Dispatching followup-started for session:", session.id);
+        window.dispatchEvent(new CustomEvent("followup-started", { detail: { sessionId: session.id } }));
+
+        let reasoning: string | undefined;
+        const aiResponseText = flattenCompletionResult(await generateChatCompletion(
+            session,
+            latestMessages,
+            { appTags: ["chat", "text", "activity_care"], activityCareContext: activityContext, skipMusicAtmosphere: true },
+            { onReasoning: (t) => { reasoning = t; } },
+        ));
+
+        const { hasVisible, stateValues } = await parseAndSaveResponse(
+            aiResponseText,
+            session.id,
+            0,
+            undefined,
+            latestMessages,
+            { reasoningText: reasoning },
+        );
+        console.log(`[ActivityCare] Result: hasVisible=${hasVisible}`);
+
+        if (hasVisible) scheduleFollowUp(session.id, 0, stateValues);
+
+        window.dispatchEvent(new CustomEvent("followup-fired", { detail: { sessionId: session.id } }));
+        return { ok: true, hasVisible };
+    } catch (error: any) {
+        console.error("[ActivityCare] Error:", error);
+        pushChatMessage({
+            sessionId,
+            role: "system",
+            content: `⚠️ 主动关怀失败: ${error?.message || String(error)}`,
+        });
+        window.dispatchEvent(new CustomEvent("followup-fired", { detail: { sessionId } }));
+        return { ok: false, hasVisible: false, error: error?.message || String(error) };
+    } finally {
+        activityFiringSet.delete(sessionId);
     }
 }
 

@@ -6,7 +6,7 @@ import type { PresetConfig } from "./settings-types";
 import { getCheckPhonePromptTags } from "./checkphone-config";
 
 export const BUILTIN_PRESET_ID = "builtin_default_v1";
-export const BUILTIN_PRESET_VERSION = 257; // 升版本会用出厂内容重写用户的内置预设副本（自定义会丢），非必要不升
+export const BUILTIN_PRESET_VERSION = 259; // 升版本会用出厂内容重写用户的内置预设副本（自定义会丢），非必要不升
 
 export function createBuiltinPreset(): PresetConfig {
     const now = Date.now();
@@ -527,6 +527,28 @@ export function createBuiltinPreset(): PresetConfig {
                 injection_depth: 0,
                 enabled: true,
                 tags: ["chat", "period_care"],
+            },
+            {
+                identifier: "chat_activity_care",
+                name: "▸ 活动感知主动关怀",
+                role: "user",
+                content: [
+                    "<activity_care_instruction>",
+                    "{{timeContext}}",
+                    "你此刻察觉到的状态：{{activityCareContext}}",
+                    "",
+                    "这个状态只有一层含义：对方此刻在线，而你们已经沉默了一段时间——所以你想找她说话了。是否开口由你判断：觉得自然就发，觉得不合适就安静待着。",
+                    "要发的话，先读一遍下面的聊天记录，话题优先从里面来：接住还没聊完的话、回应她之前提到的近况、想起你们聊过的某个话题往下聊，都可以；旧话题实在接不上，也可以像老朋友随口发消息聊点别的，但必须符合你的性格和你们的关系，像「想起了她」而不是「没话找话」。深夜可以自然带一句怎么还没休息。",
+                    "消息内容要自然，遵循chat_output_format，像随手发出的一条消息；不要复述状态快照，不要出现「监测」「状态」「系统」这类词，也不要解释你是怎么知道的。",
+                    "如果觉得此刻不适合打扰，决定静默，按照以下格式输出：",
+                    "[好感度:X][占有欲:X][焦虑值:X]",
+                    "[内心]你的所有内心想法写在这里。[/内心]",
+                    "</activity_care_instruction>",
+                ].join("\n"),
+                injection_position: 0,
+                injection_depth: 0,
+                enabled: true,
+                tags: ["chat", "activity_care"],
             },
             {
                 identifier: "chat_offline_format",

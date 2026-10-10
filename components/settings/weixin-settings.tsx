@@ -35,7 +35,7 @@ import { getWeixinBotStatus } from "@/lib/use-weixin-bridge";
 import { getLoginQrCode, pollQrCodeStatus, type QrLoginStatus } from "@/lib/weixin-bridge";
 import { loadCharacters } from "@/lib/character-storage";
 import type { Character } from "@/lib/character-types";
-import { Toggle, Select } from "@/components/ui/form";
+import { Toggle, Select, SecretInput } from "@/components/ui/form";
 import { ConfirmDialog, ContentDialog } from "@/components/ui/modal";
 import { Alert } from "@/components/ui/feedback";
 
@@ -760,9 +760,8 @@ export function WeixinSettings({ onOpenDataManagement }: { onOpenDataManagement?
                                 <span className="menu-desc !mt-0">① 打开 supabase.com → 右上角头像 → Account Settings → 「Access Tokens」→ 点「Generate new token」（名字随意）→ 复制生成的 token；</span>
                                 <span className="menu-desc !mt-0">② 粘贴到下方，点「一键部署」。Token 只用这一次、不会被保存，部署时会自动关闭 JWT 校验。</span>
                                 <span className="menu-desc !mt-0">📌 只需部署这一次：之后小手机每次同步运行包都会把最新逻辑传到云端，函数自动使用。</span>
-                                <input
-                                    type="password"
-                                    className="h-10 w-full rounded-[12px] border border-black/10 bg-white px-3 text-[13px] focus:outline-none focus:ring-1 focus:ring-black/30"
+                                <SecretInput
+                                    className="h-10 rounded-[12px] border border-black/10 bg-white px-3 text-[13px] focus:outline-none focus:ring-1 focus:ring-black/30"
                                     placeholder="粘贴 Access Token（sbp_ 开头）"
                                     value={cloudDeployToken}
                                     onChange={e => setCloudDeployToken(e.target.value)}

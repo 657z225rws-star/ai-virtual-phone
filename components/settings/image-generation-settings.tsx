@@ -17,7 +17,7 @@ import {
     generateImageFromConfiguredApi,
 } from "@/lib/image-generation-service";
 import { Alert } from "@/components/ui/feedback";
-import { Input, Select, Textarea, Toggle } from "@/components/ui/form";
+import { Input, Select, Textarea, Toggle, SecretInput } from "@/components/ui/form";
 
 const SIZE_OPTIONS = ["auto", "1024x1024", "1024x1536", "1536x1024"];
 const QUALITY_OPTIONS = ["auto", "low", "medium", "high"];
@@ -243,8 +243,7 @@ export function ImageGenerationSettings() {
 
                 <div className="flex flex-col gap-1">
                     <label className="menu-desc ml-1">API Key</label>
-                    <Input
-                        type="password"
+                    <SecretInput
                         value={settings.apiKey}
                         onChange={(event) => updateSettings({ apiKey: event.target.value })}
                         placeholder="sk-..."
@@ -385,8 +384,7 @@ export function ImageGenerationSettings() {
 
                     <div className="flex flex-col gap-1">
                         <label className="menu-desc ml-1">ImgBB API Key</label>
-                        <Input
-                            type="password"
+                        <SecretInput
                             value={settings.imageHosting.imgbbApiKey}
                             onChange={(event) => updateImageHosting({ imgbbApiKey: event.target.value })}
                             placeholder="从 imgbb.com/api/1 获取"

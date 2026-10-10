@@ -5,6 +5,7 @@ import { Component, memo, useCallback, useEffect, useInsertionEffect, useLayoutE
 import { updateStatusBarTone } from "@/lib/bg-tone";
 import { startDiaryEntryTimerService, stopDiaryEntryTimerService } from "@/lib/diary-entry-timer-service";
 import { startFollowUpService, stopFollowUpService } from "@/lib/follow-up-service";
+import { startActivityWatcher, stopActivityWatcher } from "@/lib/activity-watcher";
 import { startProactiveCloudService } from "@/lib/proactive-cloud";
 import { startMomentsService, stopMomentsService } from "@/lib/moments-engine";
 import { bgTimerCleanup } from "@/lib/bg-timer";
@@ -1595,6 +1596,8 @@ export function DesktopShell({ initialThemeProfile, initialThemeAssets }: Deskto
 
       if (cancelled) return;
       startFollowUpService();
+      // 活动感知观察器：察觉用户在虚拟手机里的活动（听歌等），按规则触发角色主动关怀
+      startActivityWatcher();
       // 云端主动消息：可见时每分钟拉一次收件箱（app 关着时由云端负责生成与推送）
       stopProactiveCloud = startProactiveCloudService();
       startMomentsService();
@@ -1610,6 +1613,7 @@ export function DesktopShell({ initialThemeProfile, initialThemeAssets }: Deskto
       stopProactiveCloud?.();
       if (servicesStarted) {
         stopFollowUpService();
+        stopActivityWatcher();
         stopMomentsService();
         stopDiaryEntryTimerService();
       }

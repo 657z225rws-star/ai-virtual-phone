@@ -85,6 +85,44 @@ export default function MusicFloat({ hidden }: { hidden?: boolean }) {
         });
     }, []);
 
+    const collapseExpanded = useCallback(() => {
+        setExpanded(prev => {
+            if (!prev) return prev;
+            setPos(p => {
+                const el = floatRef.current;
+                const parent = el?.closest("[data-ui='phone-screen']") as HTMLElement | null;
+                if (!el || !parent) return p;
+                const pw = parent.clientWidth;
+                const ph = parent.clientHeight;
+                const curW = EXPANDED_W;
+                const nextW = COLLAPSED_W;
+                const nextH = COLLAPSED_H;
+                const alignLeft = p.x + curW / 2 < pw / 2;
+                const nx = alignLeft
+                    ? Math.max(0, Math.min(p.x, pw - nextW))
+                    : Math.max(0, Math.min(p.x + curW - nextW, pw - nextW));
+                const ny = Math.max(0, Math.min(p.y, ph - nextH));
+                return { x: nx, y: ny };
+            });
+            return false;
+        });
+    }, []);
+
+    // 展开状态下点击任意空白处也能收起：在 document 捕获阶段监听 pointerdown，
+    // 落点不在悬浮球内部就收起。悬浮球自身的点击不经过这里，走原有的 toggle 逻辑。
+    useEffect(() => {
+        if (!expanded) return;
+        const onDocPointerDown = (e: PointerEvent) => {
+            const el = floatRef.current;
+            if (!el) return;
+            const target = e.target as Node | null;
+            if (target && el.contains(target)) return;
+            collapseExpanded();
+        };
+        document.addEventListener("pointerdown", onDocPointerDown, true);
+        return () => document.removeEventListener("pointerdown", onDocPointerDown, true);
+    }, [expanded, collapseExpanded]);
+
     const dismissFloat = useCallback(() => {
         if (!player) return;
         if (dismissTimerRef.current) clearTimeout(dismissTimerRef.current);

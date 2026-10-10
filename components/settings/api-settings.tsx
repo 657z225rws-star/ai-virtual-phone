@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useContext } from "react";
-import { Plus, RefreshCw, Rss, AlertCircle, FileEdit, Trash2, X, Check } from "lucide-react";
+import { Plus, RefreshCw, Rss, AlertCircle, FileEdit, Trash2, X, Check, Eye, EyeOff, Copy } from "lucide-react";
 import { SettingsContext } from "../phone-settings-app";
 import type { ApiConfig, GeminiSafetyThreshold } from "@/lib/settings-types";
 import { loadApiConfigs, saveApiConfigs } from "@/lib/settings-storage";
@@ -72,6 +72,8 @@ export function ApiSettings() {
     const [fetchedModels, setFetchedModels] = useState<Record<string, string[]>>({});
     const [isTesting, setIsTesting] = useState<Record<string, boolean>>({});
     const [testResult, setTestResult] = useState<Record<string, { success: boolean; message: string }>>({});
+    // 密钥默认明文显示（手机密码框会锁死英文键盘、禁用剪贴板选择，非常难用），只在小眼睛点击后隐藏
+    const [hideKeys, setHideKeys] = useState<Record<string, boolean>>({});
 
     // Load from localStorage on mount
     useEffect(() => {
@@ -122,6 +124,25 @@ export function ApiSettings() {
 
     const updateConfig = (id: string, updates: Partial<ApiConfig>) => {
         persist(configs.map(c => c.id === id ? { ...c, ...updates } : c));
+    };
+
+    // 复制配置：同一渠道常需要按模型分方案（文本/向量/图像各一个），
+    // 复制后只需改模型名。名字自动去重：去掉尾部数字后依次试 ali1、ali2…
+    const duplicateConfig = (id: string) => {
+        const src = configs.find(c => c.id === id);
+        if (!src) return;
+        const existingNames = new Set(configs.map(c => c.name));
+        const base = (src.name || "").replace(/\d+$/, "") || "新配置";
+        let n = 1;
+        let name = `${base}${n}`;
+        while (existingNames.has(name)) {
+            n++;
+            name = `${base}${n}`;
+        }
+        const copy: ApiConfig = { ...src, id: `config-${Date.now()}`, name };
+        persist([...configs, copy]);
+        setIsNewConfig(false);
+        setEditingId(copy.id);
     };
 
     const removeConfig = (id: string) => {
@@ -285,6 +306,17 @@ export function ApiSettings() {
                                     type="button"
                                     onClick={(event) => {
                                         event.stopPropagation();
+                                        duplicateConfig(config.id);
+                                    }}
+                                    className="ui-link-btn"
+                                    title="复制此配置（改名后复用，如 ali1、ali2）"
+                                >
+                                    <Copy size={18} />
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={(event) => {
+                                        event.stopPropagation();
                                         setEditingId(config.id);
                                     }}
                                     className="ui-link-btn"
@@ -379,36 +411,51 @@ export function ApiSettings() {
 
                                         <div className="flex flex-col gap-1">
                                             <label className="menu-desc ml-1">API Key</label>
-                                            <Input
-                                                type="password"
-                                                value={config.apiKey}
-                                                onChange={(e) => updateConfig(config.id, { apiKey: e.target.value })}
-                                                placeholder="sk-..."
-                                            />
+                                            <div className="flex items-center gap-2">
+                                                <Input
+                                                    type={hideKeys[config.id] ? "password" : "text"}
+                                                    value={config.apiKey}
+                                                    onChange={(e) => updateConfig(config.id, { apiKey: e.target.value })}
+                                                    placeholder="sk-..."
+                                                    className="flex-1"
+                                                    autoCapitalize="off"
+                                                    autoCorrect="off"
+                                                    spellCheck={false}
+                                                />
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setHideKeys(prev => ({ ...prev, [config.id]: !prev[config.id] }))}
+                                                    className="ui-btn ui-btn-soft-action shrink-0 !px-2.5"
+                                                    style={{ height: 40, width: 40, padding: 0 }}
+                                                    title={hideKeys[config.id] ? "显示密钥" : "隐藏密钥"}
+                                                >
+                                                    {hideKeys[config.id] ? <Eye size={16} /> : <EyeOff size={16} />}
+                                                </button>
+                                            </div>
                                         </div>
 
                                         <div className="flex flex-col gap-1">
                                             <label className="menu-desc ml-1">默认模型 (Default Model)</label>
                                             <div className="flex gap-2">
-                                                {fetchedModels[config.id] && fetchedModels[config.id].length > 0 ? (
-                                                    <select
-                                                        value={config.defaultModel}
-                                                        onChange={(e) => updateConfig(config.id, { defaultModel: e.target.value })}
-                                                        className="ui-select flex-1"
-                                                    >
-                                                        <option value="">请选择模型...</option>
+                                                {/* 永远保留手动输入：拉取到的模型列表只作为输入建议（datalist），
+                                                    不再整框替换成下拉——之前拉取成功后就没法手打模型名了 */}
+                                                <input
+                                                    type="text"
+                                                    list={`model-options-${config.id}`}
+                                                    value={config.defaultModel}
+                                                    onChange={(e) => updateConfig(config.id, { defaultModel: e.target.value })}
+                                                    placeholder="直接输入模型名，或拉取列表后从建议里选"
+                                                    className="ui-input flex-1"
+                                                    autoCapitalize="off"
+                                                    autoCorrect="off"
+                                                    spellCheck={false}
+                                                />
+                                                {fetchedModels[config.id] && fetchedModels[config.id].length > 0 && (
+                                                    <datalist id={`model-options-${config.id}`}>
                                                         {fetchedModels[config.id].map(m => (
-                                                            <option key={m} value={m}>{m}</option>
+                                                            <option key={m} value={m} />
                                                         ))}
-                                                    </select>
-                                                ) : (
-                                                    <input
-                                                        type="text"
-                                                        value={config.defaultModel}
-                                                        onChange={(e) => updateConfig(config.id, { defaultModel: e.target.value })}
-                                                        placeholder="gpt-4o, claude-3-opus..."
-                                                        className="ui-input flex-1"
-                                                    />
+                                                    </datalist>
                                                 )}
                                             </div>
                                         </div>

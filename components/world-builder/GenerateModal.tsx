@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
+import { SecretInput } from "@/components/ui/form";
 import { saveModel } from "./model-db";
 import { optimizeModelBlob } from "./model-optimize";
 import { kvGet, kvSet } from "@/lib/kv-db";
@@ -296,10 +297,9 @@ export default function GenerateModal({ open, categories, characters = [], onClo
         <div className="wb-modal-section">
           <label className="wb-modal-label">API Key</label>
           <div style={{ display: "flex", gap: 6 }}>
-            <input
+            <SecretInput
               className="wb-modal-input"
-              style={{ flex: 1 }}
-              type="password"
+              wrapperStyle={{ flex: 1 }}
               placeholder="输入 Tripo API Key"
               value={apiKey}
               onChange={(e) => saveApiKey(e.target.value)}

@@ -360,6 +360,9 @@ type ChatPromptBuildOptions = {
     timedWakeElapsedMinutes?: number;
     timedWakeIntent?: string;
     periodCareContext?: string;
+    activityCareContext?: string;
+    /** 跳过"一起听"音乐氛围注入（活动感知关怀用：歌只是在线证据，注入歌词窗口和 [一起听] 工具会诱导模型聊歌） */
+    skipMusicAtmosphere?: boolean;
     appId?: string;
     appTags?: string[];
     attachedImages?: string[];
@@ -1919,6 +1922,7 @@ export async function buildChatPromptMessages(
         timedWakeElapsedMinutes: options?.timedWakeElapsedMinutes,
         timedWakeIntent: options?.timedWakeIntent,
         periodCareContext: options?.periodCareContext,
+        activityCareContext: options?.activityCareContext,
         scheduleSummary,
         currentSchedule,
         coreMemories,
@@ -1945,7 +1949,9 @@ export async function buildChatPromptMessages(
     });
     // 音乐氛围注入（一起听）：仅单聊主链路。易变状态放消息数组尾部（参考 SullyOS 的做法，
     // 不进 system prompt 前缀，避免破坏前缀缓存）；未在播放时 buildMusicAtmosphere 返回空串。
-    if (resolvedAppId === "chat" && !session.isGroup && !isOfflineMode) {
+    // 活动感知关怀路径传 skipMusicAtmosphere 跳过：歌在那里只是"在线"的证据，
+    // 注入歌词窗口和 [一起听] 工具会把话题硬拽到歌曲上。
+    if (resolvedAppId === "chat" && !session.isGroup && !isOfflineMode && !options?.skipMusicAtmosphere) {
         const musicAtmosphere = buildMusicAtmosphere(character.id, userIdentity?.name || "");
         if (musicAtmosphere) {
             llmMessages.push({ role: "system", content: musicAtmosphere });

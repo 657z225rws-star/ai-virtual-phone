@@ -7,7 +7,7 @@ import type { VoiceApiConfig } from "@/lib/settings-types";
 import { loadVoiceConfigs, saveVoiceConfigs } from "@/lib/settings-storage";
 import { synthesizeSpeech } from "@/lib/tts-service";
 import { ConfirmDialog } from "@/components/ui/modal";
-import { Toggle, Input } from "@/components/ui/form";
+import { Toggle, Input, SecretInput } from "@/components/ui/form";
 import { Alert } from "@/components/ui/feedback";
 
 const SUPPORTED_VOICE_PROVIDERS = new Set(["Minimax", "OpenAI"]);
@@ -651,8 +651,7 @@ export function VoiceSettings() {
 
                                         <div className="flex flex-col gap-1">
                                             <label className="menu-desc ml-1">API Key</label>
-                                            <Input
-                                                type="password"
+                                            <SecretInput
                                                 value={config.apiKey}
                                                 onChange={(e) => updateConfig(config.id, { apiKey: e.target.value })}
                                                 placeholder="输入密钥..."

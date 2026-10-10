@@ -60,6 +60,7 @@ export interface AssemblerInput {
     timedWakeElapsedMinutes?: number;
     timedWakeIntent?: string;
     periodCareContext?: string;
+    activityCareContext?: string;
     scheduleSummary?: string;
     currentSchedule?: string;
     longTermMemories?: string;
@@ -619,6 +620,7 @@ export function assemblePromptPayload(input: AssemblerInput): LLMMessage[] {
     const timedWakeElapsedMinutes = input.timedWakeElapsedMinutes ?? 0;
     const timedWakeIntent = input.timedWakeIntent ?? "";
     const periodCareContext = input.periodCareContext ?? "";
+    const activityCareContext = input.activityCareContext ?? "";
     const resolvedUserName = userIdentity?.name || userName;
     const blocks: PromptBlock[] = [];
     const hasPromptOrder = !!(preset?.prompt_order && preset.prompt_order.length > 0);
@@ -675,6 +677,7 @@ export function assemblePromptPayload(input: AssemblerInput): LLMMessage[] {
         engine.timedWakeElapsedMinutes = String(timedWakeElapsedMinutes);
         engine.timedWakeIntent = timedWakeIntent;
         engine.periodCareContext = periodCareContext;
+        engine.activityCareContext = activityCareContext;
         engine.customStickerNames = input.customStickerNames ?? "";
         engine.customStickerExample = input.customStickerExample ?? "";
         engine.musicLocal = input.musicLocal ?? "";
@@ -932,6 +935,7 @@ export function assemblePromptPayload(input: AssemblerInput): LLMMessage[] {
             engine.timedWakeElapsedMinutes = String(timedWakeElapsedMinutes);
             engine.timedWakeIntent = timedWakeIntent;
             engine.periodCareContext = periodCareContext;
+            engine.activityCareContext = activityCareContext;
             engine.customStickerNames = input.customStickerNames ?? "";
         engine.customStickerExample = input.customStickerExample ?? "";
         engine.musicLocal = input.musicLocal ?? "";
