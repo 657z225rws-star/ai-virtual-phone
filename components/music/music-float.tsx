@@ -3,6 +3,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useMusicControlsOptional } from "@/lib/music-context";
+import { loadFloatPosition, saveFloatPosition } from "@/lib/float-position-storage";
 
 const DRAG_START_THRESHOLD = 6;
 const SWIPE_DISMISS_EDGE_X = 4;
@@ -45,6 +46,20 @@ export default function MusicFloat({ hidden }: { hidden?: boolean }) {
     const [expanded, setExpanded] = useState(false);
     const [dragging, setDragging] = useState(false);
     const [dismissing, setDismissing] = useState(false);
+
+    // 位置记忆：挂载时恢复上次拖放的位置（按当前手机屏幕尺寸夹取，防止换设备后跑出屏）
+    useEffect(() => {
+        const saved = loadFloatPosition("music");
+        if (!saved) return;
+        const parent = document.querySelector("[data-ui='phone-screen']") as HTMLElement | null;
+        const pw = parent?.clientWidth ?? 0;
+        const ph = parent?.clientHeight ?? 0;
+        if (pw <= 0 || ph <= 0) return;
+        setPos({
+            x: Math.max(0, Math.min(saved.left, pw - COLLAPSED_W)),
+            y: Math.max(0, Math.min(saved.top, ph - COLLAPSED_H)),
+        });
+    }, []);
 
     const clampPos = useCallback((x: number, y: number) => {
         const el = floatRef.current;
@@ -216,6 +231,7 @@ export default function MusicFloat({ hidden }: { hidden?: boolean }) {
 
         if (d.moved) {
             setPos(finalPos);
+            saveFloatPosition("music", { left: finalPos.x, top: finalPos.y });
             return;
         }
 

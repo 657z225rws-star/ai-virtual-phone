@@ -18,6 +18,7 @@ import { loadCharacters } from "@/lib/character-storage";
 import { getAllPosts } from "@/lib/moments-storage";
 import type { LLMMessage } from "@/lib/llm-prompt-assembler";
 import { getWeekStartIso } from "@/lib/calendar-utils";
+import { loadFloatPosition, saveFloatPosition } from "@/lib/float-position-storage";
 import { loadStorySessions, loadStoryMessages } from "@/lib/story-storage";
 import { previewStoryPromptPayload } from "@/lib/story-engine";
 import { loadVnSessions, loadVnMessages } from "@/lib/vn-storage";
@@ -102,6 +103,7 @@ export function DebugPromptPanel() {
     const [draggingFloatingButton, setDraggingFloatingButton] = useState(false);
     const floatingDragRef = useRef<FloatingDragState | null>(null);
     const suppressFloatingClickRef = useRef(false);
+    const floatingButtonRef = useRef<HTMLButtonElement | null>(null);
     const [selectedChatSessionId, setSelectedChatSessionId] = useState("");
     const [followUpMode, setFollowUpMode] = useState(false);
 
@@ -247,6 +249,20 @@ export function DebugPromptPanel() {
         window.addEventListener(CHAT_APP_SETTINGS_UPDATED_EVENT, syncEnabled);
         return () => window.removeEventListener(CHAT_APP_SETTINGS_UPDATED_EVENT, syncEnabled);
     }, []);
+
+    // 位置记忆：悬浮球渲染出来后恢复上次拖放的位置（按当前父容器夹取，防止跑出屏）
+    useEffect(() => {
+        if (!enabled || !collapsed) return;
+        const saved = loadFloatPosition("prompt-viewer");
+        if (!saved) return;
+        const button = floatingButtonRef.current;
+        if (!button) return;
+        const bounds = getFloatingButtonBounds(button);
+        setFloatingPosition({
+            left: clampFloatingPosition(saved.left, bounds.maxLeft),
+            top: clampFloatingPosition(saved.top, bounds.maxTop),
+        });
+    }, [enabled, collapsed]);
 
     useEffect(() => {
         if (mode !== "chat" || !activeChatSnapshot) return;
@@ -602,7 +618,11 @@ export function DebugPromptPanel() {
         const drag = floatingDragRef.current;
         if (!drag || drag.pointerId !== event.pointerId) return;
         event.stopPropagation();
-        if (drag.moved) suppressFloatingClickRef.current = true;
+        if (drag.moved) {
+            suppressFloatingClickRef.current = true;
+            // 拖完记住位置（floatingPosition 来自最近一次渲染，即最后一次移动的结果）
+            if (floatingPosition) saveFloatPosition("prompt-viewer", floatingPosition);
+        }
         floatingDragRef.current = null;
         setDraggingFloatingButton(false);
         if (event.currentTarget.hasPointerCapture(event.pointerId)) {
@@ -741,6 +761,7 @@ export function DebugPromptPanel() {
         return (
             <button
                 type="button"
+                ref={floatingButtonRef}
                 className="prompt-viewer-float-button"
                 aria-label="打开提示词查看器"
                 data-positioned={floatingPosition ? "" : undefined}

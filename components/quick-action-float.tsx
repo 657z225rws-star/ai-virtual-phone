@@ -14,6 +14,7 @@ import {
 import type { ApiConfig, BindingConfig, BindingSlot, WorldBookConfig } from "@/lib/settings-types";
 import { loadCharacters } from "@/lib/character-storage";
 import type { Character } from "@/lib/character-types";
+import { loadFloatPosition, saveFloatPosition } from "@/lib/float-position-storage";
 
 type QuickScope = "global" | "character";
 type FloatingPosition = { left: number; top: number };
@@ -110,6 +111,20 @@ export function QuickActionFloat() {
         document.addEventListener("pointerdown", handlePointerDown);
         return () => document.removeEventListener("pointerdown", handlePointerDown);
     }, [open]);
+
+    // 位置记忆：悬浮球显示出来后恢复上次拖放的位置（按当前父容器夹取，防止跑出屏）
+    useEffect(() => {
+        if (!enabled) return;
+        const saved = loadFloatPosition("quick-action");
+        if (!saved) return;
+        const button = floatingButtonRef.current;
+        if (!button) return;
+        const bounds = getFloatingButtonBounds(button);
+        setFloatingPosition({
+            left: clampFloatingPosition(saved.left, bounds.maxLeft),
+            top: clampFloatingPosition(saved.top, bounds.maxTop),
+        });
+    }, [enabled]);
 
     useLayoutEffect(() => {
         const layer = layerRef.current;
@@ -244,7 +259,11 @@ export function QuickActionFloat() {
         const drag = floatingDragRef.current;
         if (!drag || drag.pointerId !== event.pointerId) return;
         event.stopPropagation();
-        if (drag.moved) suppressFloatingClickRef.current = true;
+        if (drag.moved) {
+            suppressFloatingClickRef.current = true;
+            // 拖完记住位置（floatingPosition 来自最近一次渲染，即最后一次移动的结果）
+            if (floatingPosition) saveFloatPosition("quick-action", floatingPosition);
+        }
         floatingDragRef.current = null;
         setDraggingFloatingButton(false);
         if (event.currentTarget.hasPointerCapture(event.pointerId)) {
