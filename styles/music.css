@@ -2468,3 +2468,32 @@
     border-right: 2px solid rgba(255, 255, 255, 0.25);
     border-bottom: 2px solid rgba(255, 255, 255, 0.25);
 }
+
+/* ── 悬浮球 X 关闭键 ── */
+.music-float-close {
+    position: absolute;
+    top: 3px;
+    right: 3px;
+    z-index: 3;
+    width: 16px;
+    height: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    border-radius: 50%;
+    background: rgba(0, 0, 0, 0.38);
+    color: rgba(255, 255, 255, 0.92);
+    cursor: pointer;
+    padding: 0;
+    transition: background 0.15s ease-out;
+}
+
+.music-float-close:active {
+    background: rgba(0, 0, 0, 0.6);
+}
+
+[data-expanded] .music-float-close {
+    top: 5px;
+    right: 5px;
+}

@@ -40,6 +40,8 @@ export type MusicActions = {
     setVolume: (vol: number) => void;
     stop: () => void;
     dismissFloat: () => void;
+    /** 只隐藏悬浮球，不打断播放（X 键在播放中时的行为） */
+    hideFloat: () => void;
     openFullPlayer: () => void;
     closeFullPlayer: () => void;
 };
@@ -341,6 +343,12 @@ export function MusicProvider({ children }: { children: ReactNode }) {
         setFloatDismissed(true);
     }, []);
 
+    // 只隐藏悬浮球，不打断播放：X 键在播放中时用这个，音乐后台继续放；
+    // 下次用户在音乐 App 里主动点播任何歌（playTrack/playUrl/playResolvedTrack）球会回来。
+    const hideFloat = useCallback(() => {
+        setFloatDismissed(true);
+    }, []);
+
     const openFullPlayer = useCallback(() => { setFloatDismissed(false); setShowFullPlayer(true); }, []);
     const closeFullPlayer = useCallback(() => setShowFullPlayer(false), []);
 
@@ -461,11 +469,11 @@ export function MusicProvider({ children }: { children: ReactNode }) {
     const controlsValue = useMemo<MusicControlsValue>(() => ({
         currentTrack, isPlaying, duration, playMode, queue, volume, showFullPlayer, floatDismissed,
         playTrack, playUrl, pause, resume, togglePlay, next, prev, seek,
-        setPlayMode, setQueue, removeFromQueue, setVolume, stop, dismissFloat, openFullPlayer, closeFullPlayer,
+        setPlayMode, setQueue, removeFromQueue, setVolume, stop, dismissFloat, hideFloat, openFullPlayer, closeFullPlayer,
     }), [
         currentTrack, isPlaying, duration, playMode, queue, volume, showFullPlayer, floatDismissed,
         playTrack, playUrl, pause, resume, togglePlay, next, prev, seek,
-        setQueue, removeFromQueue, setVolume, stop, dismissFloat, openFullPlayer, closeFullPlayer,
+        setQueue, removeFromQueue, setVolume, stop, dismissFloat, hideFloat, openFullPlayer, closeFullPlayer,
     ]);
 
     const value = useMemo<MusicContextValue>(() => ({

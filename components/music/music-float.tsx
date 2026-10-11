@@ -250,6 +250,15 @@ export default function MusicFloat({ hidden }: { hidden?: boolean }) {
     const handlePointerUp = useCallback((e: React.PointerEvent) => finishPointer(e), [finishPointer]);
     const handlePointerCancel = useCallback((e: React.PointerEvent) => finishPointer(e), [finishPointer]);
 
+    // X 关闭键：播放中只隐藏球（音乐后台继续放，下次主动点播时球回来）；
+    // 暂停态点 X = 彻底关掉（原 dismiss 语义）。
+    const handleFloatClose = useCallback((e: React.MouseEvent) => {
+        e.stopPropagation();
+        if (!player) return;
+        if (player.isPlaying) player.hideFloat();
+        else player.dismissFloat();
+    }, [player]);
+
     if (!player || !player.currentTrack || hidden || player.floatDismissed) return null;
 
     const track = player.currentTrack;
@@ -267,6 +276,17 @@ export default function MusicFloat({ hidden }: { hidden?: boolean }) {
             onPointerUp={handlePointerUp}
             onPointerCancel={handlePointerCancel}
         >
+            <button
+                type="button"
+                className="music-float-close"
+                onPointerDown={(e) => e.stopPropagation()}
+                onClick={handleFloatClose}
+                aria-label="关闭悬浮球"
+            >
+                <svg width="9" height="9" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
+                    <path d="M2.5 2.5l7 7M9.5 2.5l-7 7" />
+                </svg>
+            </button>
             <div className="music-float-inner">
                 {/* Cover art */}
                 <div className="music-float-cover-wrap" {...(player.isPlaying ? { "data-playing": "" } : {})}>
