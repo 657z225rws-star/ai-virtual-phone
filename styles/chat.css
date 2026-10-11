@@ -2728,6 +2728,10 @@ html[data-theme="dark"] .wallet-balance-action {
   transform: scale(1.2);
   overflow: visible;
 }
+/* 深色主题：静息爱心改为浅色，否则黑对黑完全隐身 */
+html[data-theme="dark"] .chat-monologue-heart {
+  color: rgba(255,255,255,0.32);
+}
 
 /* ── Input textarea ── */
 .chat-input-textarea {
