@@ -14,7 +14,7 @@ const SWIPE_VELOCITY_RECENT_MS = 180;
 // 与 music.css 中 .music-float / [data-expanded] 的尺寸保持一致
 const COLLAPSED_W = 72;
 const COLLAPSED_H = 72;
-const EXPANDED_W = 260;
+const EXPANDED_W = 292;
 const EXPANDED_H = 84;
 
 export default function MusicFloat({ hidden }: { hidden?: boolean }) {
@@ -276,20 +276,6 @@ export default function MusicFloat({ hidden }: { hidden?: boolean }) {
             onPointerUp={handlePointerUp}
             onPointerCancel={handlePointerCancel}
         >
-            {/* X 关闭键只在展开时出现：悬浮球状态放右上角太挡事 */}
-            {expanded ? (
-                <button
-                    type="button"
-                    className="music-float-close"
-                    onPointerDown={(e) => e.stopPropagation()}
-                    onClick={handleFloatClose}
-                    aria-label="关闭悬浮球"
-                >
-                    <svg width="9" height="9" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
-                        <path d="M2.5 2.5l7 7M9.5 2.5l-7 7" />
-                    </svg>
-                </button>
-            ) : null}
             <div className="music-float-inner">
                 {/* Cover art */}
                 <div className="music-float-cover-wrap" {...(player.isPlaying ? { "data-playing": "" } : {})}>
@@ -335,6 +321,17 @@ export default function MusicFloat({ hidden }: { hidden?: boolean }) {
                     <button className="music-float-btn" onClick={(e) => { e.stopPropagation(); player.next(); }}>
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
                             <path d="M6 18l8.5-6L6 6v12zm8.5 0h2V6h-2v12z" />
+                        </svg>
+                    </button>
+                    {/* 关闭悬浮球：播放中只隐藏球（音乐后台继续放），暂停态彻底关掉 */}
+                    <button
+                        type="button"
+                        className="music-float-btn music-float-close"
+                        onClick={handleFloatClose}
+                        aria-label="关闭悬浮球"
+                    >
+                        <svg width="15" height="15" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
+                            <path d="M2.5 2.5l7 7M9.5 2.5l-7 7" />
                         </svg>
                     </button>
                 </div>

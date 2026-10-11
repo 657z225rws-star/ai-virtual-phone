@@ -1126,7 +1126,7 @@
 }
 
 .music-float[data-expanded] {
-    width: 260px;
+    width: 292px;
     height: 84px;
     border-radius: 24px;
 }
@@ -1134,7 +1134,7 @@
 .music-float-inner {
     display: flex;
     align-items: center;
-    width: 260px;
+    width: 292px;
     height: 100%;
     padding: 0 12px;
     box-sizing: border-box;
@@ -1218,6 +1218,7 @@
 /* ── Info Area ── */
 .music-float-info {
     margin: 0 12px;
+    min-width: 0;
     display: flex;
     flex-direction: column;
     justify-content: center;
@@ -2469,31 +2470,11 @@
     border-bottom: 2px solid rgba(255, 255, 255, 0.25);
 }
 
-/* ── 悬浮球 X 关闭键 ── */
+/* ── 悬浮球 X 关闭键：与切歌/播放按钮同排同款，收起态随控制区一起隐藏 ── */
 .music-float-close {
-    position: absolute;
-    top: 3px;
-    right: 3px;
-    z-index: 3;
-    width: 16px;
-    height: 16px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border: none;
-    border-radius: 50%;
-    background: rgba(0, 0, 0, 0.38);
-    color: rgba(255, 255, 255, 0.92);
-    cursor: pointer;
-    padding: 0;
-    transition: background 0.15s ease-out;
+    color: rgba(255, 255, 255, 0.55);
 }
 
 .music-float-close:active {
-    background: rgba(0, 0, 0, 0.6);
-}
-
-[data-expanded] .music-float-close {
-    top: 5px;
-    right: 5px;
+    color: var(--c-music-accent);
 }
