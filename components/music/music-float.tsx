@@ -276,17 +276,20 @@ export default function MusicFloat({ hidden }: { hidden?: boolean }) {
             onPointerUp={handlePointerUp}
             onPointerCancel={handlePointerCancel}
         >
-            <button
-                type="button"
-                className="music-float-close"
-                onPointerDown={(e) => e.stopPropagation()}
-                onClick={handleFloatClose}
-                aria-label="关闭悬浮球"
-            >
-                <svg width="9" height="9" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
-                    <path d="M2.5 2.5l7 7M9.5 2.5l-7 7" />
-                </svg>
-            </button>
+            {/* X 关闭键只在展开时出现：悬浮球状态放右上角太挡事 */}
+            {expanded ? (
+                <button
+                    type="button"
+                    className="music-float-close"
+                    onPointerDown={(e) => e.stopPropagation()}
+                    onClick={handleFloatClose}
+                    aria-label="关闭悬浮球"
+                >
+                    <svg width="9" height="9" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
+                        <path d="M2.5 2.5l7 7M9.5 2.5l-7 7" />
+                    </svg>
+                </button>
+            ) : null}
             <div className="music-float-inner">
                 {/* Cover art */}
                 <div className="music-float-cover-wrap" {...(player.isPlaying ? { "data-playing": "" } : {})}>
