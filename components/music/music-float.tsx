@@ -238,12 +238,14 @@ export default function MusicFloat({ hidden }: { hidden?: boolean }) {
         if (!d.moved && player) {
             if (d.startedOnInfo) {
                 player.openFullPlayer();
+                // 跳进全屏播放器后球会隐藏，回来时如果还保持展开会很突兀，顺手收起
+                collapseExpanded();
                 return;
             }
 
             toggleExpanded();
         }
-    }, [player, clampPos, dismissFloat, toggleExpanded]);
+    }, [player, clampPos, dismissFloat, toggleExpanded, collapseExpanded]);
 
     const handlePointerUp = useCallback((e: React.PointerEvent) => finishPointer(e), [finishPointer]);
     const handlePointerCancel = useCallback((e: React.PointerEvent) => finishPointer(e), [finishPointer]);
