@@ -18,8 +18,12 @@ const WX_COORD_KEY = "ai_phone_weather_coord_v2";
 
 /** 体感缓存时长：10 分钟（天气是 15 分钟一步的模式值，取太密没有意义） */
 const CACHE_MS = 10 * 60 * 1000;
-/** 坐标缓存时长：6 小时（人不会瞬移；超过重新定位，兼顾出差旅行） */
+/** 坐标「新鲜」时长：6 小时内直接用，不重新定位（人不会瞬移） */
 const COORD_MS = 6 * 60 * 60 * 1000;
+/** 坐标「陈旧兜底」时长：14 天内的旧坐标仍可用于静默取天气。
+ *  天气只要 1 公里精度的格点，几天的位置误差对「冷热干湿」毫无影响；
+ *  权限未授权/被拒时用它兜底，避免反复弹定位授权框。 */
+const COORD_STALE_MS = 14 * 24 * 60 * 60 * 1000;
 /** 注入提示词时最多等多久；超时本轮跳过，后台继续跑完写缓存 */
 const PROMPT_WAIT_MS = 4000;
 /** 单个网络请求超时 */
@@ -114,10 +118,11 @@ type LocateFailure = "denied" | "unavailable" | "unsupported";
 let lastLocateFailure: LocateFailure | null = null;
 let inflightLocate: Promise<Coords | null> | null = null;
 
-function readCachedCoords(): Coords | null {
+function readCachedCoords(allowStale = false): Coords | null {
     const cached = readJsonLS<{ coords: Coords; ts: number }>(WX_COORD_KEY);
-    if (!cached || typeof cached.ts !== "number") return null;
-    if (Date.now() - cached.ts >= COORD_MS) return null;
+    if (!cached || typeof cached.ts !== "number" || !cached.coords) return null;
+    const maxAge = allowStale ? COORD_STALE_MS : COORD_MS;
+    if (Date.now() - cached.ts >= maxAge) return null;
     return cached.coords ?? null;
 }
 
@@ -158,7 +163,15 @@ function locateOnce(): Promise<Coords | null> {
 async function resolveCoords(allowPrompt: boolean): Promise<Coords | null> {
     const cached = readCachedCoords();
     if (cached) return cached;
-    if (!allowPrompt) return null;
+    if (!allowPrompt) {
+        // 静默路径（聊天自动注入）：先查浏览器定位权限状态，
+        // 只有「已授权」才调用定位（此时浏览器保证不弹窗）；
+        // 「每次都问 / 未决定 / 已拒绝 / 查不到」一律不弹窗，用 14 天内的旧坐标兜底。
+        const permission = await queryGeoPermission();
+        if (permission !== "granted") return readCachedCoords(true);
+        return locateOnce();
+    }
+    // 只在设置页用户主动操作时允许弹一次授权框
     return locateOnce();
 }
 
@@ -390,7 +403,8 @@ export async function getWeatherFeelStatus(allowPrompt: boolean): Promise<Weathe
     if (!isWeatherEnabled()) return { state: "disabled" };
     const cached = readFreshFeel();
     if (cached) return { state: "ok", feel: cached };
-    if (!allowPrompt && !readCachedCoords()) return { state: "idle" };
+    // 静默路径下有 14 天内的旧坐标兜底就算「能用」，不算 idle
+    if (!allowPrompt && !readCachedCoords(true)) return { state: "idle" };
 
     const feel = await loadFeel(allowPrompt);
     if (feel) return { state: "ok", feel };
@@ -607,12 +621,14 @@ export async function getWeatherFeelPromptBlock(params: {
         if (typeof window === "undefined") return null;
         if (!opening) {
             // 非开场：只后台刷新，绝不拖慢这一轮回复
-            void loadFeel(true);
+            void loadFeel(false);
             return null;
         }
-        // 开场：最多等 waitMs，超时就这一轮不给，后台继续跑完写缓存
+        // 开场：最多等 waitMs，超时就这一轮不给，后台继续跑完写缓存。
+        // 两条路径都传 allowPrompt=false —— 聊天注入永远不弹定位授权框，
+        // 权限没拿到就用旧坐标兜底（见 resolveCoords）。
         feel = await Promise.race([
-            loadFeel(true),
+            loadFeel(false),
             new Promise<null>(resolve => setTimeout(() => resolve(null), waitMs)),
         ]);
     }

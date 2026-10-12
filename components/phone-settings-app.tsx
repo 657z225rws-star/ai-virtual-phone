@@ -73,7 +73,7 @@ const SETTINGS_MENU = [
     { id: "weixin", icon: MessageSquare, label: "微信接入", desc: "iLink Bot", iconColor: CONTENT_APP_ACCENTS.chat },
     { id: "toolbox", icon: Wrench, label: "聊天工具箱", desc: "外部工具调用", iconColor: BINDING_ACCENTS.voice },
     { id: "proactive", icon: BellRing, label: "主动消息", desc: "云端到点主动联系", iconColor: CONTENT_APP_ACCENTS.chat },
-    { id: "activityWatch", icon: Radar, label: "活动感知", desc: undefined, iconColor: CONTENT_APP_ACCENTS.chat },
+    { id: "activityWatch", icon: Radar, label: "活动感知", desc: "察觉挂机主动关怀", iconColor: CONTENT_APP_ACCENTS.chat },
     { id: "identity", icon: UserCircle, label: "用户身份", desc: "个人信息", iconColor: BINDING_ACCENTS.identity },
     { id: "about", icon: Info, label: "关于与声明", desc: "版本与协议", iconColor: BINDING_ACCENTS.memory },
 ] as const;
@@ -246,7 +246,7 @@ export function PhoneSettingsApp({ onClose, onNotice }: SettingsPageProps) {
                 }
                 setWeatherPreview(null);
                 setWeatherLocateHint(status.state === "idle"
-                    ? "尚未定位。首次聊天时会向你请求一次定位授权；也可以点右侧按钮立刻试一次"
+                    ? "尚未定位。点右侧「重新定位」授权一次，之后聊天里都会静默获取，不再弹窗"
                     : status.state === "denied"
                         ? "定位被拒绝。iOS 可在 系统设置 → 隐私与安全性 → 定位服务 里允许；桌面浏览器点地址栏左边的图标改权限，然后点「重新定位」"
                         : status.state === "ignored"
