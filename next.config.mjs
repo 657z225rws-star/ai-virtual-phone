@@ -19,9 +19,18 @@ function resolveDistDir() {
   return path.join(os.tmpdir(), `next-dist-${safeProjectName}`);
 }
 
+// 构建时把「这一版是谁」写进前端，关于页直接显示，不需要人工维护：
+// Vercel 构建时注入提交号和时间；本地开发回退成 dev。
+const buildId = (process.env.VERCEL_GIT_COMMIT_SHA || "").trim().slice(0, 7) || "dev";
+const buildTime = new Date().toISOString();
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   typedRoutes: true,
+  env: {
+    NEXT_PUBLIC_BUILD_ID: buildId,
+    NEXT_PUBLIC_BUILD_TIME: buildTime,
+  },
   outputFileTracingRoot: projectRoot,
   distDir: resolveDistDir(),
   eslint: {

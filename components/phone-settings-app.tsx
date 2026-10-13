@@ -446,7 +446,7 @@ export function PhoneSettingsApp({ onClose, onNotice }: SettingsPageProps) {
                                 </span>
                                 <div className="card-featured-body">
                                     <div className="card-featured-label">体感感知</div>
-                                    <div className="card-featured-desc">让角色知道你此刻冷热干湿，在开场问候里自然带一句（不含地名与数字，每天开场只提一次）</div>
+                                    <div className="card-featured-desc">让角色知道你此刻体感天气，在开场问候里自然带一句</div>
                                     {weatherAware && weatherLocateHint ? (
                                         <div className="card-featured-desc settings-weather-hint">{weatherLocateHint}</div>
                                     ) : null}

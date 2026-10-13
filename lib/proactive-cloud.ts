@@ -17,12 +17,15 @@ import { loadCharacters } from "./character-storage";
 import { loadMemoryEntriesByType } from "./memory-storage";
 import {
     CHAT_MESSAGE_PUSHED_EVENT,
+    createResponseBatchId,
+    getLatestCharacterStateValues,
     hydrateChatStorage,
     loadChatSessions,
     loadChatMessages,
     pushChatMessage,
     type ChatMessage,
 } from "./chat-storage";
+import { parseAIResponse } from "./rich-message-parser";
 import { loadTimedWakeSchedules, removeTimedWakeSchedule } from "./timed-wake-storage";
 
 const CONFIG_KEY = "ai_phone_proactive_cloud_v1";
@@ -743,10 +746,31 @@ export async function pullProactiveInbox(
         const session = sessions.find(s => !s.isGroup && s.contactId === item.character_id);
         const body = String(item.body || "").trim();
         if (!session || !body) { skipped++; continue; }
-        pushChatMessage({
-            sessionId: session.id,
-            role: "assistant",
-            content: body,
+        // 云端生成的是原始文本：必须过一遍和普通聊天同一个解析器，
+        // 才能按空行拆成多个气泡，[状态栏]/[内心]/[表情包] 这些也才会正常渲染。
+        // （此前这里直接 pushChatMessage 塞原文，所以整段挤在一个气泡里。）
+        const previousState = getLatestCharacterStateValues(session.contactId);
+        const { parts, stateValues, freshStateValues, statusPanel, innerMonologue } = parseAIResponse(body, previousState);
+        const responseBatchId = createResponseBatchId();
+        const visibleParts = parts.filter(part => part.mediaType !== "voice_call" && part.mediaType !== "video_call");
+        if (visibleParts.length === 0) {
+            skipped++;
+            continue;
+        }
+        visibleParts.forEach((part, index) => {
+            pushChatMessage({
+                sessionId: session.id,
+                role: "assistant",
+                content: part.content,
+                mediaType: part.mediaType,
+                mediaData: part.mediaData,
+                responseBatchId,
+                rawResponseText: body,
+                statusPanel: index === 0 && statusPanel ? statusPanel : undefined,
+                innerMonologue: index === 0 && innerMonologue ? innerMonologue : undefined,
+                stateValues: index === 0 && stateValues.length > 0 ? stateValues : undefined,
+                freshStateValues: index === 0 ? freshStateValues : undefined,
+            });
         });
         touchedCharacters.add(item.character_id);
         added++;
