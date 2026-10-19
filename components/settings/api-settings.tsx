@@ -449,13 +449,13 @@ export function ApiSettings() {
                                                 />
                                             </div>
                                             {fetchedModels[config.id] && fetchedModels[config.id].length > 0 && (
-                                                <div className="mt-1 max-h-44 overflow-y-auto rounded-[12px] border border-black/10 bg-white">
+                                                <div className="ui-model-list">
                                                     {fetchedModels[config.id].map(m => (
                                                         <button
                                                             key={m}
                                                             type="button"
                                                             onClick={() => updateConfig(config.id, { defaultModel: m })}
-                                                            className={`block w-full px-3 py-2 text-left text-[13px] active:bg-black/5 ${config.defaultModel === m ? "bg-black/[0.06] font-medium" : ""}`}
+                                                            className={config.defaultModel === m ? "active" : ""}
                                                         >
                                                             {m}
                                                         </button>

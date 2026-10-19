@@ -970,6 +970,28 @@ html[data-theme="dark"] .ui-btn-action {
 .ui-input::placeholder { color: var(--c-icon); }
 .ui-input-inline { border: none; padding: 0; background: transparent; }
 
+/* ── 模型建议列表（跟随主题换肤） ── */
+.ui-model-list {
+  margin-top: 4px;
+  max-height: 176px;
+  overflow-y: auto;
+  border-radius: var(--ui-radius);
+  border: 1px solid var(--c-input-border);
+  background: var(--c-input);
+}
+.ui-model-list button {
+  display: block;
+  width: 100%;
+  padding: 8px 12px;
+  text-align: left;
+  font-size: 13px;
+  color: var(--c-text);
+  border-bottom: 0.5px solid var(--c-panel-border);
+}
+.ui-model-list button:last-child { border-bottom: none; }
+.ui-model-list button:active { background: var(--c-card); }
+.ui-model-list button.active { background: var(--c-card); color: var(--c-text-title); font-weight: 500; }
+
 .ui-textarea {
   width: 100%;
   padding: 10px 14px;
