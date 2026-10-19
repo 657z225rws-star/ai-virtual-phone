@@ -437,27 +437,31 @@ export function ApiSettings() {
                                         <div className="flex flex-col gap-1">
                                             <label className="menu-desc ml-1">默认模型 (Default Model)</label>
                                             <div className="flex gap-2">
-                                                {/* 永远保留手动输入：拉取到的模型列表只作为输入建议（datalist），
-                                                    不再整框替换成下拉——之前拉取成功后就没法手打模型名了 */}
                                                 <input
                                                     type="text"
-                                                    list={`model-options-${config.id}`}
                                                     value={config.defaultModel}
                                                     onChange={(e) => updateConfig(config.id, { defaultModel: e.target.value })}
-                                                    placeholder="直接输入模型名，或拉取列表后从建议里选"
+                                                    placeholder="直接输入模型名，或拉取列表后从下面点选"
                                                     className="ui-input flex-1"
                                                     autoCapitalize="off"
                                                     autoCorrect="off"
                                                     spellCheck={false}
                                                 />
-                                                {fetchedModels[config.id] && fetchedModels[config.id].length > 0 && (
-                                                    <datalist id={`model-options-${config.id}`}>
-                                                        {fetchedModels[config.id].map(m => (
-                                                            <option key={m} value={m} />
-                                                        ))}
-                                                    </datalist>
-                                                )}
                                             </div>
+                                            {fetchedModels[config.id] && fetchedModels[config.id].length > 0 && (
+                                                <div className="mt-1 max-h-44 overflow-y-auto rounded-[12px] border border-black/10 bg-white">
+                                                    {fetchedModels[config.id].map(m => (
+                                                        <button
+                                                            key={m}
+                                                            type="button"
+                                                            onClick={() => updateConfig(config.id, { defaultModel: m })}
+                                                            className={`block w-full px-3 py-2 text-left text-[13px] active:bg-black/5 ${config.defaultModel === m ? "bg-black/[0.06] font-medium" : ""}`}
+                                                        >
+                                                            {m}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            )}
                                         </div>
 
                                         <div className="flex gap-3 mt-1">
