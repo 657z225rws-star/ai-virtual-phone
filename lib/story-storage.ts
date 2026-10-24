@@ -16,6 +16,7 @@ export type StorySession = {
   customCSS?: string;
   foldTags?: string;            // Comma-separated tag names to fold for this session.
   contextExcludedTags?: string; // Comma-separated tag names stripped before sending story history to the LLM.
+  obfuscatedOutput?: boolean;   // Whether to force tool-call obfuscation for this session.
   uiPrefs?: StoryUiPrefs;
   lastMessageId?: string;
   lastMessagePreview?: string;

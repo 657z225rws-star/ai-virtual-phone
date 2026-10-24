@@ -1248,7 +1248,7 @@ html[data-theme="dark"] .ui-btn-action {
   align-items: center;
   gap: 10px;
   margin: 8px 8px 0;
-  color: #000;
+  color: var(--c-text-title, #000);
   font-size: calc(18px*var(--app-text-scale,1));
   font-style: italic;
   font-weight: 700;

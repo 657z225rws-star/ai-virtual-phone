@@ -414,6 +414,18 @@
         .story-row[data-role="user"] .story-bubble-head {
           justify-content: flex-end;
         }
+        /* 头信息里的「朗读」小圆钮：内联在名字/时间旁，不悬浮，随主题换色 */
+        .story-bubble-head .chat-tts-speak-btn {
+          position: static;
+          transform: none;
+          width: 18px;
+          height: 18px;
+          flex: 0 0 auto;
+          margin-left: 2px;
+          border: 1px solid var(--c-story-panel-border, rgba(139, 120, 94, 0.2));
+          background: var(--c-story-panel, rgba(255, 255, 255, 0.6));
+          color: var(--c-story-sub, #64748b);
+        }
         
         /* 气泡卡片：不再像传统的微信气泡，而是像拍立得、剪贴报 */
         .story-bubble {

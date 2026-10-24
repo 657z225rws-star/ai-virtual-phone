@@ -32,6 +32,8 @@ import { scopeSessionCSS } from "@/lib/css-scoper";
 import { STORY_CSS_EXAMPLE } from "@/lib/css-examples";
 import { applyEditOutputRegex } from "@/lib/llm-prompt-assembler";
 import { MacroEngine } from "@/lib/macro-engine";
+import { TtsSpeakButton } from "@/components/chat/tts-speak-button";
+import { getThemeMode } from "@/lib/ui-theme";
 
 type StoryAppProps = {
   onClose: () => void;
@@ -266,6 +268,7 @@ export function StoryApp({ onClose }: StoryAppProps) {
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const [editingContent, setEditingContent] = useState("");
   const [cssModalOpen, setCssModalOpen] = useState(false);
+  const [isDarkTheme, setIsDarkTheme] = useState(() => (typeof window !== "undefined" ? getThemeMode() === "dark" : false));
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const shellInnerRef = useRef<HTMLDivElement | null>(null);
   const mountedRef = useRef(true);
@@ -295,8 +298,15 @@ export function StoryApp({ onClose }: StoryAppProps) {
 
   useEffect(() => {
     mountedRef.current = true;
+    const updateTheme = () => {
+      setIsDarkTheme(getThemeMode() === "dark");
+    };
+    updateTheme();
+    const observer = new MutationObserver(() => updateTheme());
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
     return () => {
       mountedRef.current = false;
+      observer.disconnect();
       if (activeSessionIdRef.current) {
         cancelStoryGenerationRun(activeSessionIdRef.current);
       }
@@ -571,6 +581,7 @@ export function StoryApp({ onClose }: StoryAppProps) {
       const result = await generateStoryCompletion(characterId, historyForGeneration, {
         sessionFoldTags: currentSession?.foldTags,
         sessionContextExcludedTags: currentSession?.contextExcludedTags,
+        obfuscatedOutput: currentSession?.obfuscatedOutput,
         signal: generationRun.controller.signal,
       });
       if (!isCurrentGeneration()) return;
@@ -781,6 +792,7 @@ export function StoryApp({ onClose }: StoryAppProps) {
       const result = await generateStoryCompletion(characterId, contextMessages, {
         sessionFoldTags: currentSession?.foldTags,
         sessionContextExcludedTags: currentSession?.contextExcludedTags,
+        obfuscatedOutput: currentSession?.obfuscatedOutput,
         signal: generationRun.controller.signal,
       });
       if (!isCurrentGeneration()) return;
@@ -805,9 +817,11 @@ export function StoryApp({ onClose }: StoryAppProps) {
 
   if (!ready) return null;
 
+  const effectiveTheme = uiPrefs.theme || (isDarkTheme ? "night" : "paper");
+
   if (characters.length === 0) {
     return (
-      <div className="story-app-shell" data-story-theme="paper">
+      <div className="story-app-shell" data-story-theme={effectiveTheme}>
         <div className="story-shell-inner">
           <div className="story-header">
             <div className="story-header-safe-area" />
@@ -848,7 +862,7 @@ export function StoryApp({ onClose }: StoryAppProps) {
   return (
     <div
       className={`story-app-shell story-session-${currentSession.id}`}
-      data-story-theme={uiPrefs.theme || "paper"}
+      data-story-theme={effectiveTheme}
       onTouchStart={(event) => handleTouchStart(event.touches[0]?.clientX || 0)}
       onTouchMove={(event) => handleTouchMove(event.touches[0]?.clientX || 0)}
       onTouchEnd={handleTouchEnd}
@@ -973,17 +987,32 @@ export function StoryApp({ onClose }: StoryAppProps) {
 
         <div className="story-drawer-section">
           <div className="story-drawer-eyebrow">工具</div>
-          <button
-            className="story-character-chip justify-center"
-            onClick={() => {
-              const rebuilt = rebuildStorySessionRenderCache(activeCharacterId, currentSession.id, { sessionFoldTags: currentSession.foldTags });
-              setMessages(rebuilt);
-              setStorageVersion((value) => value + 1);
-              alert(`缓存重建完成，${rebuilt.length} 条消息已更新`);
-            }}
-          >
-            重建渲染缓存
-          </button>
+          <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+            <button
+              className="story-character-chip justify-center"
+              style={{ flex: "1 1 calc(50% - 4px)", minWidth: 0, padding: "10px 12px", cursor: "pointer" }}
+              data-active={currentSession?.obfuscatedOutput ? "true" : "false"}
+              onClick={() => {
+                if (!currentSession) return;
+                const nextVal = !currentSession.obfuscatedOutput;
+                applySessionUpdates({ obfuscatedOutput: nextVal });
+              }}
+            >
+              混淆输出 {currentSession?.obfuscatedOutput ? "✓" : ""}
+            </button>
+            <button
+              className="story-character-chip justify-center"
+              style={{ flex: "1 1 calc(50% - 4px)", minWidth: 0, padding: "10px 12px", cursor: "pointer" }}
+              onClick={() => {
+                const rebuilt = rebuildStorySessionRenderCache(activeCharacterId, currentSession.id, { sessionFoldTags: currentSession.foldTags });
+                setMessages(rebuilt);
+                setStorageVersion((value) => value + 1);
+                alert(`缓存重建完成，${rebuilt.length} 条消息已更新`);
+              }}
+            >
+              重建渲染缓存
+            </button>
+          </div>
         </div>
       </aside>
 
@@ -1104,6 +1133,13 @@ export function StoryApp({ onClose }: StoryAppProps) {
                           <div className="story-bubble-head">
                             {!uiPrefs.hideAvatar ? <span>{speakerName}</span> : null}
                             {!uiPrefs.hideTimestamp ? <span>{formatStoryTime(message.createdAt)}</span> : null}
+                            {message.role === "assistant" ? (
+                              <TtsSpeakButton
+                                text={message.renderedContent || message.rawContent}
+                                characterId={currentCharacter.id}
+                                appId="story"
+                              />
+                            ) : null}
                           </div>
                         ) : null}
                         <div className="story-bubble">
@@ -1211,7 +1247,7 @@ export function StoryApp({ onClose }: StoryAppProps) {
             <div style={{ display: "flex", flexDirection: "column" }}>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(6, minmax(0, 1fr))", gap: 8 }}>
                 {STORY_THEMES.map(t => {
-                  const active = (uiPrefs.theme || "paper") === t.id;
+                  const active = effectiveTheme === t.id;
                   return (
                     <button
                       key={t.id}

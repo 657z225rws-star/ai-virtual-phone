@@ -44,6 +44,7 @@ import { scheduleFollowUp, cancelFollowUp } from "@/lib/follow-up-service";
 import { PENDING_REPLY_PREFIX } from "@/lib/friend-request-engine";
 import type { UserIdentity } from "@/components/settings/user-identity";
 import { AlertCircle, Blocks, Check, Trash2, User, ChevronLeft, ChevronRight, Clapperboard, Clock, Gift, Languages, Loader2, MoreHorizontal, X } from "lucide-react";
+import { TtsSpeakButton } from "./tts-speak-button";
 import { setDebugChatState } from "@/lib/debug-store";
 import { scopeSessionCSS } from "@/lib/css-scoper";
 import { setChatActive } from "@/lib/music-action-queue";
@@ -4453,6 +4454,7 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
         const el = sw.el;
         el.style.transition = "transform 0.15s ease-out";
         el.style.transform = "translateX(0px)";
+        delete el.dataset.swiping;
         const hint = el.querySelector<HTMLElement>(".chat-swipe-quote-hint");
         if (hint) {
             hint.style.opacity = "0";
@@ -4580,6 +4582,7 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
         const release = (el: HTMLElement) => {
             el.style.transition = "transform 0.15s ease-out";
             el.style.transform = "translateX(0px)";
+            delete el.dataset.swiping;
             setHint(el, 0);
             setDeleteHint(el, 0);
             if (resetTimer) clearTimeout(resetTimer);
@@ -4619,10 +4622,12 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                 if (dx > Math.max(dy, 6)) {
                     g.locked = true;
                     g.dir = 1;
+                    g.el.dataset.swiping = "true";
                     g.el.style.transition = "none";
                 } else if (-dx > Math.max(dy, 6)) {
                     g.locked = true;
                     g.dir = -1;
+                    g.el.dataset.swiping = "true";
                     g.el.style.transition = "none";
                 } else return;
             }
@@ -5868,6 +5873,12 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                                             {session.isGroup && msg.role !== "user" && (
                                                 <span className="chat-group-sender-name">{msg.senderName || ""}{renderGroupRoleBadge(msg.senderCharacterId)}</span>
                                             )}
+                                            {msg.role === "assistant" && !renderMsg.mediaType && !isStandaloneHtmlPreview && !isMultiSelectMode && bubbleDisplayContent.trim() && (
+                                                <TtsSpeakButton
+                                                    text={bubbleDisplayContent}
+                                                    characterId={msg.senderCharacterId || session.contactId}
+                                                />
+                                            )}
                                             <div
                                             {...(editingMessageId !== msg.id ? {
                                                 onPointerDown: (e: React.PointerEvent) => {
@@ -5903,6 +5914,7 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                                                             releaseSwipeBubble(sw);
                                                             swipeGestureRef.current = null;
                                                         } else if (sdx > 0) {
+                                                            sw.el.dataset.swiping = "true";
                                                             const clamped = Math.min(sdx, SWIPE_QUOTE_MAX_PX);
                                                             sw.dx = clamped;
                                                             sw.dir = 1;
@@ -5914,6 +5926,7 @@ export function ChatRoom({ session, onBack }: ChatRoomProps) {
                                                                 hint.style.opacity = String(Math.min(1, clamped / SWIPE_QUOTE_TRIGGER_PX));
                                                             }
                                                         } else if (sdx < 0) {
+                                                            sw.el.dataset.swiping = "true";
                                                             const mag = Math.min(-sdx, SWIPE_QUOTE_MAX_PX);
                                                             sw.dx = -mag;
                                                             sw.dir = -1;

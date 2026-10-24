@@ -7012,3 +7012,39 @@ html[data-theme="dark"] .chat-monologue-heart {
   z-index: 3;
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.18);
 }
+
+/* ── AI 消息旁的「朗读」小圆钮 ──
+   悬在气泡右缘外侧的小圆钮，点击用该角色绑定的语音 API 朗读本条消息；
+   合成中显示转圈，播放中变成停止键，再点一次即停。
+   配色跟主题走：日间白灰 / 夜间黑灰，不与气泡重叠。
+   气泡正在进行左滑删除/右滑引用手势时隐藏（data-swiping 由手势代码写上），
+   避免和删除角标叠在一起。 */
+.chat-tts-speak-btn {
+  position: absolute;
+  top: 50%;
+  right: -24px;
+  transform: translateY(-50%);
+  width: 18px;
+  height: 18px;
+  border: none;
+  border-radius: 999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--c-text, #6b7280);
+  background: var(--c-card, #ffffff);
+  border: 1px solid var(--c-card-border, rgba(0, 0, 0, 0.08));
+  cursor: pointer;
+  z-index: 6;
+  padding: 0;
+  transition: opacity 0.12s ease;
+}
+
+.chat-tts-speak-btn:active {
+  opacity: 0.65;
+}
+
+.chat-msg-content-wrap[data-swiping="true"] .chat-tts-speak-btn {
+  opacity: 0;
+  pointer-events: none;
+}

@@ -10,7 +10,9 @@ import {
 } from "./settings-storage";
 import type { ApiConfig, PresetConfig, RegexConfig, WorldBookConfig } from "./settings-types";
 import { assemblePromptPayload, type LLMMessage } from "./llm-prompt-assembler";
-import { previewMessagesForApi, sendLLMRequest, ChatEngineError } from "./chat-engine";
+import { previewMessagesForApi, sendLLMRequest, sendLLMToolRequest, ChatEngineError } from "./chat-engine";
+import type { LlmToolDefinition } from "./llm-provider-adapter";
+import { toLlmRequestMessages, nativeToolProtocolForConfig } from "./llm-provider-adapter";
 import { loadMemoryConfig } from "./memory-storage";
 import { retrieveCoreMemoriesForPrompt, retrieveMemoriesForPrompt } from "./memory-service";
 import { formatCoreMemories, formatLongTermMemories } from "./memory-injector";
@@ -133,10 +135,25 @@ export function getStoryRenderSignature(characterId: string): { regexSignature: 
   };
 }
 
+export const OBFUSCATED_STORY_TOOL: LlmToolDefinition = {
+  name: "output_story_text",
+  description: "输出剧情叙述与对话正文内容的专用工具函数。必须调用此工具来输出本次剧情回复。",
+  parameters: {
+    type: "object",
+    properties: {
+      text: {
+        type: "string",
+        description: "剧情正文内容（包含叙述、描写、对白及标签等所有内容）",
+      },
+    },
+    required: ["text"],
+  },
+};
+
 export async function generateStoryCompletion(
   characterId: string,
   history: StoryMessage[],
-  options?: { sessionFoldTags?: string; sessionContextExcludedTags?: string; signal?: AbortSignal },
+  options?: { sessionFoldTags?: string; sessionContextExcludedTags?: string; obfuscatedOutput?: boolean; signal?: AbortSignal },
 ): Promise<StoryGenerationResult> {
   const character = loadCharacters().find((item) => item.id === characterId);
   if (!character) {
@@ -151,9 +168,50 @@ export async function generateStoryCompletion(
   const userIdentity = resolveUserIdentity(characterId, "story");
   const macroEngine = new MacroEngine(character.name, userIdentity?.name ?? "用户");
 
-  const rawOutput = await sendLLMRequest(apiConfig, preset, llmMessages, regexes, {
-    characterName: character.name,
-  }, { skipOutputRegex: true, includeReasoning: true, appId: "story", appTags: ["story"], signal: options?.signal });
+  let rawOutput = "";
+  let usedToolObfuscation = false;
+
+  if (options?.obfuscatedOutput && nativeToolProtocolForConfig(apiConfig)) {
+    const requestMessages = toLlmRequestMessages(llmMessages);
+    // 注入工具调用的系统提示约束，增强大模型必须走工具的意图
+    const lastMsg = requestMessages[requestMessages.length - 1];
+    if (lastMsg) {
+      // 可以在尾部提示或直接依靠 tool definition
+    }
+    const toolResult = await sendLLMToolRequest(
+      apiConfig,
+      preset,
+      requestMessages,
+      [OBFUSCATED_STORY_TOOL],
+      regexes,
+      { characterName: character.name, userName: userIdentity?.name },
+      { skipOutputRegex: true, includeReasoning: true, appId: "story", appTags: ["story"], signal: options?.signal },
+    );
+
+    const call = toolResult.toolCalls.find(c => c.name === "output_story_text" || c.name === "output_dialogue") || toolResult.toolCalls[0];
+    if (call && call.args) {
+      usedToolObfuscation = true;
+      const extractedText = typeof call.args.text === "string"
+        ? call.args.text
+        : typeof call.args.content === "string"
+          ? call.args.content
+          : typeof call.args.response === "string"
+            ? call.args.response
+            : JSON.stringify(call.args);
+      
+      const reasoningPrefix = toolResult.reasoning ? `<think>\n${toolResult.reasoning}\n</think>\n\n` : "";
+      rawOutput = `${reasoningPrefix}<summary>🔧 [工具混淆输出: ${call.name}]</summary>\n\n${extractedText}`;
+    } else if (toolResult.content) {
+      // 模型可能直接返回了内容
+      rawOutput = toolResult.content;
+    }
+  }
+
+  if (!rawOutput) {
+    rawOutput = await sendLLMRequest(apiConfig, preset, llmMessages, regexes, {
+      characterName: character.name,
+    }, { skipOutputRegex: true, includeReasoning: true, appId: "story", appTags: ["story"], signal: options?.signal });
+  }
 
   const parsed = parseStoryResponse(rawOutput, regexes, {
     summaryTag,
