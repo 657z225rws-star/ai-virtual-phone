@@ -252,6 +252,68 @@ function formatTime(value?: string): string {
   }
 }
 
+/** 编辑中的草稿输入框：输入时不触发归一化重写，失焦/回车才提交合法值。 */
+function useDraftNumber(commit: (n: number) => void) {
+  const [draft, setDraft] = useState<string | null>(null);
+  const display = (fallback: string) => draft ?? fallback;
+  const bind = (fallback: string) => ({
+    value: display(fallback),
+    onChange: (e: React.ChangeEvent<HTMLInputElement>) => setDraft(e.target.value),
+    onBlur: () => {
+      if (draft === null) return;
+      const n = Number(draft);
+      setDraft(null);
+      if (Number.isFinite(n) && n > 0) commit(n);
+    },
+    onKeyDown: (e: React.KeyboardEvent<HTMLInputElement>) => {
+      if (e.key === "Enter") (e.currentTarget as HTMLInputElement).blur();
+    },
+    inputMode: "decimal" as const,
+    spellCheck: false,
+  });
+  return bind;
+}
+
+/** 备份间隔自由输入：数字 + 单位（小时/天），范围 0.5 小时 ~ 14 天。 */
+function CloudIntervalInput({ hours, onChange, disabled }: { hours: number; onChange: (h: number) => void; disabled?: boolean }) {
+  const initialUnit: "hours" | "days" = hours >= 24 && Number.isInteger(hours / 24) ? "days" : "hours";
+  const [unit, setUnit] = useState<"hours" | "days">(initialUnit);
+  const fallback = unit === "days"
+    ? String(Number((hours / 24).toFixed(2)))
+    : String(Number(hours.toFixed(1)));
+  const bind = useDraftNumber((n) => onChange(unit === "days" ? n * 24 : n));
+  return (
+    <div className="data-cloud-field" style={{ display: "flex", gap: 8, alignItems: "flex-end" }}>
+      <label style={{ flex: 1, minWidth: 0 }}>
+        <span className="menu-desc ml-1">备份间隔</span>
+        <Input type="number" min="0.5" step="any" placeholder={fallback} {...bind(fallback)} disabled={disabled} />
+      </label>
+      <label style={{ width: 86, flexShrink: 0 }}>
+        <span className="menu-desc ml-1">单位</span>
+        <Select
+          value={unit}
+          onChange={(e) => setUnit(e.target.value === "days" ? "days" : "hours")}
+          disabled={disabled}
+        >
+          <option value="hours">小时</option>
+          <option value="days">天</option>
+        </Select>
+      </label>
+    </div>
+  );
+}
+
+/** 保留份数自由输入：1 ~ 10 份。 */
+function CloudKeepCountInput({ count, onChange, disabled }: { count: number; onChange: (n: number) => void; disabled?: boolean }) {
+  const bind = useDraftNumber(onChange);
+  return (
+    <label className="data-cloud-field">
+      <span className="menu-desc ml-1">保留份数</span>
+      <Input type="number" min="1" max="10" step="1" placeholder={String(count)} {...bind(String(count))} disabled={disabled} />
+    </label>
+  );
+}
+
 export function DataManagement({ onNotice }: DataManagementProps) {
   const [snapshot, setSnapshot] = useState<DataSnapshot | null>(null);
   const [selectedExportModules, setSelectedExportModules] = useState<DataModuleId[]>(ALL_MODULE_IDS);
@@ -834,31 +896,16 @@ export function DataManagement({ onNotice }: DataManagementProps) {
           </div>
 
           <div className="data-cloud-options">
-            <label className="data-cloud-field">
-              <span className="menu-desc ml-1">备份间隔</span>
-              <Select
-                value={String(cloudConfig.intervalHours)}
-                onChange={(e) => updateCloud({ intervalHours: Number(e.target.value) })}
-                disabled={!cloudConfig.enabled}
-              >
-                <option value="0.5">每 30 分钟</option>
-                <option value="1">每小时</option>
-                <option value="6">每 6 小时</option>
-                <option value="12">每 12 小时</option>
-                <option value="24">每天</option>
-              </Select>
-            </label>
-            <label className="data-cloud-field">
-              <span className="menu-desc ml-1">保留份数</span>
-              <Select
-                value={String(cloudConfig.keepCount)}
-                onChange={(e) => updateCloud({ keepCount: Number(e.target.value) })}
-                disabled={!cloudConfig.enabled}
-              >
-                <option value="2">2 份</option>
-                <option value="3">3 份</option>
-              </Select>
-            </label>
+            <CloudIntervalInput
+              hours={cloudConfig.intervalHours}
+              onChange={(h) => updateCloud({ intervalHours: h })}
+              disabled={!cloudConfig.enabled}
+            />
+            <CloudKeepCountInput
+              count={cloudConfig.keepCount}
+              onChange={(n) => updateCloud({ keepCount: n })}
+              disabled={!cloudConfig.enabled}
+            />
           </div>
         </div>
       </div>

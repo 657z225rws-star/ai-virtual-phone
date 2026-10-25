@@ -77,12 +77,12 @@ export function isCloudBackupConfigured(config: CloudBackupConfig): boolean {
 function clampInterval(value: unknown): number {
   const n = Number(value);
   if (!Number.isFinite(n)) return DEFAULT_CLOUD_BACKUP_CONFIG.intervalHours;
-  // Floor at 0.5h to avoid hammering; cap at a week.
-  return Math.min(168, Math.max(0.5, n));
+  // Floor at 0.5h to avoid hammering; cap at 14 days (自由输入的最大间隔).
+  return Math.min(336, Math.max(0.5, n));
 }
 
 function clampKeepCount(value: unknown): number {
   const n = Math.round(Number(value));
   if (!Number.isFinite(n)) return DEFAULT_CLOUD_BACKUP_CONFIG.keepCount;
-  return Math.min(5, Math.max(2, n));
+  return Math.min(10, Math.max(1, n));
 }
