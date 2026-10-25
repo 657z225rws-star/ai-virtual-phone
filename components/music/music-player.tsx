@@ -176,6 +176,7 @@ export default function MusicPlayer() {
 
     const [liked, setLiked] = useState(false);
     const [showPlaylistPicker, setShowPlaylistPicker] = useState(false);
+    const [showSleepPicker, setShowSleepPicker] = useState(false);
     const [playlists, setPlaylists] = useState<NeteasePlaylist[]>([]);
     const [loadingPlaylists, setLoadingPlaylists] = useState(false);
     const [addResult, setAddResult] = useState<{ ok: boolean; message: string } | null>(null);
@@ -389,18 +390,40 @@ export default function MusicPlayer() {
 
             {/* Progress bar */}
             <div className="music-player-progress-area">
-                {/* Share + Chat — absolute positioned above progress */}
+                {/* Share + Chat + Sleep Timer — absolute positioned above progress */}
                 <div className="music-player-share-row">
-                    <button className="music-player-ctrl-btn music-player-ctrl-side" onClick={openShareViaChat}>
+                    <button className="music-player-ctrl-btn music-player-ctrl-side" onClick={openShareViaChat} title="分享到聊天">
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                             <circle cx="18" cy="5" r="3" /><circle cx="6" cy="12" r="3" /><circle cx="18" cy="19" r="3" />
                             <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" /><line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
                         </svg>
                     </button>
-                    <button className="music-player-ctrl-btn music-player-ctrl-side" onClick={() => window.dispatchEvent(new CustomEvent("open-mini-chat"))}>
+                    <button className="music-player-ctrl-btn music-player-ctrl-side" onClick={() => window.dispatchEvent(new CustomEvent("open-mini-chat"))} title="聊天">
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                             <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
                         </svg>
+                    </button>
+                    <button
+                        className="music-player-ctrl-btn music-player-ctrl-side music-player-sleep-btn"
+                        onClick={() => setShowSleepPicker(true)}
+                        title="定时关闭"
+                        aria-label="定时关闭"
+                    >
+                        {/* 网易云同款小闹钟图标 */}
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                            <line x1="12" y1="2" x2="12" y2="4" />
+                            <circle cx="12" cy="14" r="8" />
+                            <polyline points="12 10 12 14 15 15.5" />
+                        </svg>
+                        {player.sleepTimerOption !== "off" && (
+                            <span className="music-player-sleep-badge">
+                                {player.sleepTimerOption === "end-of-song"
+                                    ? "单曲"
+                                    : player.sleepTimerRemaining !== null
+                                        ? formatTime(player.sleepTimerRemaining)
+                                        : `${player.sleepTimerOption}:00`}
+                            </span>
+                        )}
                     </button>
                 </div>
                 <span className="music-player-time">{formatTime(currentTime)}</span>
@@ -502,6 +525,65 @@ export default function MusicPlayer() {
                                             </button>
                                         )}
                                     </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Sleep Timer Picker overlay */}
+            {showSleepPicker && (
+                <div className="music-playlist-picker-overlay" onClick={() => setShowSleepPicker(false)}>
+                    <div className="music-playlist-picker" onClick={e => e.stopPropagation()}>
+                        <div className="music-playlist-picker-header">
+                            <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                                    <line x1="12" y1="2" x2="12" y2="4" />
+                                    <circle cx="12" cy="14" r="8" />
+                                    <polyline points="12 10 12 14 15 15.5" />
+                                </svg>
+                                <span>定时关闭</span>
+                            </span>
+                            <button className="music-playlist-picker-close" onClick={() => setShowSleepPicker(false)}>
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+                            </button>
+                        </div>
+                        <div className="music-playlist-picker-list" style={{ padding: "6px 0 16px" }}>
+                            {[
+                                { id: "off", label: "不开启" },
+                                { id: "15", label: "15 分钟后" },
+                                { id: "30", label: "30 分钟后" },
+                                { id: "45", label: "45 分钟后" },
+                                { id: "60", label: "60 分钟后" },
+                                { id: "end-of-song", label: "播完当前歌曲后" },
+                            ].map(item => {
+                                const active = player.sleepTimerOption === item.id;
+                                return (
+                                    <button
+                                        key={item.id}
+                                        type="button"
+                                        className="music-sleep-picker-item"
+                                        data-active={active ? "true" : undefined}
+                                        onClick={() => {
+                                            player.setSleepTimer(item.id as any);
+                                            setShowSleepPicker(false);
+                                            showMusicToast(
+                                                item.id === "off"
+                                                    ? "已关闭定时"
+                                                    : item.id === "end-of-song"
+                                                        ? "将在当前歌曲播完后关闭"
+                                                        : `将在 ${item.id} 分钟后关闭`
+                                            );
+                                        }}
+                                    >
+                                        <span>{item.label}</span>
+                                        {active && (
+                                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                                                <polyline points="20 6 9 17 4 12" />
+                                            </svg>
+                                        )}
+                                    </button>
                                 );
                             })}
                         </div>

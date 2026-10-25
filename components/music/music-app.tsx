@@ -478,6 +478,7 @@ function RecommendTab({ formatTime, onPlayNetease, onPlayInList, onPlayAll, onOp
     const [loading, setLoading] = useState(dailySongs.length + playlists.length + hotSearches.length === 0);
     const [refreshingPlaylists, setRefreshingPlaylists] = useState(false);
     const [dailyOpen, setDailyOpen] = useState(() => kvGet("music-daily-open") !== "0");
+    const [dailyExpandAll, setDailyExpandAll] = useState(false);
 
     // 「更多灵感」：从全量热门歌单库随机跳一页，换一批全新的
     const refreshPlaylists = useCallback(() => {
@@ -550,11 +551,35 @@ function RecommendTab({ formatTime, onPlayNetease, onPlayInList, onPlayAll, onOp
                             }
                         >
                             {dailyOpen && (
-                                <div className="music-list music-list-compact">
-                                    {dailySongs.slice(0, 8).map((song, idx) => (
-                                        <NeteaseSongRow key={song.id} song={song} index={idx} formatTime={formatTime} onPlay={(s) => onPlayInList(s, dailySongs)} />
-                                    ))}
-                                </div>
+                                <>
+                                    <div className="music-list music-list-compact">
+                                        {(dailyExpandAll ? dailySongs : dailySongs.slice(0, 8)).map((song, idx) => (
+                                            <NeteaseSongRow key={song.id} song={song} index={idx} formatTime={formatTime} onPlay={(s) => onPlayInList(s, dailySongs)} />
+                                        ))}
+                                    </div>
+                                    {dailySongs.length > 8 && (
+                                        <button
+                                            type="button"
+                                            className="music-daily-expand-btn"
+                                            onClick={() => setDailyExpandAll(prev => !prev)}
+                                        >
+                                            <span>{dailyExpandAll ? "收起部分推荐" : `展开全部 ${dailySongs.length} 首`}</span>
+                                            <svg
+                                                width="14"
+                                                height="14"
+                                                viewBox="0 0 24 24"
+                                                fill="none"
+                                                stroke="currentColor"
+                                                strokeWidth="2"
+                                                strokeLinecap="round"
+                                                strokeLinejoin="round"
+                                                style={{ transform: dailyExpandAll ? "rotate(180deg)" : "none", transition: "transform 0.2s ease" }}
+                                            >
+                                                <polyline points="6 9 12 15 18 9" />
+                                            </svg>
+                                        </button>
+                                    )}
+                                </>
                             )}
                         </MusicSection>
                     )}

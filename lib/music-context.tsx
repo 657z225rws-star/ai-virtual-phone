@@ -13,6 +13,8 @@ import { noteTrackSwitch } from "./listen-together";
 
 export type PlayMode = "sequence" | "shuffle" | "repeat-one";
 
+export type SleepTimerOption = "off" | "15" | "30" | "45" | "60" | "end-of-song";
+
 export type MusicState = {
     currentTrack: MusicTrack | null;
     isPlaying: boolean;
@@ -23,6 +25,8 @@ export type MusicState = {
     volume: number;
     showFullPlayer: boolean;
     floatDismissed: boolean;
+    sleepTimerOption: SleepTimerOption;
+    sleepTimerRemaining: number | null; // remaining seconds
 };
 
 export type MusicActions = {
@@ -44,6 +48,7 @@ export type MusicActions = {
     hideFloat: () => void;
     openFullPlayer: () => void;
     closeFullPlayer: () => void;
+    setSleepTimer: (option: SleepTimerOption) => void;
 };
 
 type MusicContextValue = MusicState & MusicActions;
@@ -108,6 +113,18 @@ export function MusicProvider({ children }: { children: ReactNode }) {
     const [volume, setVolumeState] = useState(0.8);
     const [showFullPlayer, setShowFullPlayer] = useState(false);
     const [floatDismissed, setFloatDismissed] = useState(false);
+    const [sleepTimerOption, setSleepTimerOption] = useState<SleepTimerOption>("off");
+    const [sleepTimerRemaining, setSleepTimerRemaining] = useState<number | null>(null);
+
+    const sleepTimerRef = useRef<{
+        option: SleepTimerOption;
+        targetTime: number | null; // epoch ms
+        fadeInterval: ReturnType<typeof setInterval> | null;
+    }>({
+        option: "off",
+        targetTime: null,
+        fadeInterval: null,
+    });
 
     // Persist queue on change.
     useEffect(() => {
@@ -157,7 +174,85 @@ export function MusicProvider({ children }: { children: ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
+    // 定时到期：先把定时状态一次性归位（下次打开就是未开启状态），再平滑淡出暂停
+    const fadeOutAndPause = useCallback(() => {
+        if (sleepTimerRef.current.fadeInterval) {
+            clearInterval(sleepTimerRef.current.fadeInterval);
+            sleepTimerRef.current.fadeInterval = null;
+        }
+        // 无论音频当前是否在播放，都先把定时归位为「不开启」——
+        // 定时是一次性触发，不支持跨会话记忆（用户明确要求不记忆）
+        sleepTimerRef.current.option = "off";
+        sleepTimerRef.current.targetTime = null;
+        setSleepTimerOption("off");
+        setSleepTimerRemaining(null);
+
+        const audio = audioRef.current;
+        if (!audio || audio.paused) return;
+        const initialVol = audio.volume;
+        const steps = 15;
+        const stepTime = 100; // total 1.5s fade out
+        let currentStep = 0;
+        const fadeInterval = setInterval(() => {
+            currentStep++;
+            const nextVol = Math.max(0, initialVol * (1 - currentStep / steps));
+            if (audio) audio.volume = nextVol;
+            if (currentStep >= steps) {
+                clearInterval(fadeInterval);
+                audio.pause();
+                audio.volume = initialVol;
+            }
+        }, stepTime);
+        sleepTimerRef.current.fadeInterval = fadeInterval;
+    }, []);
+
+    const setSleepTimer = useCallback((option: SleepTimerOption) => {
+        if (sleepTimerRef.current.fadeInterval) {
+            clearInterval(sleepTimerRef.current.fadeInterval);
+            sleepTimerRef.current.fadeInterval = null;
+        }
+        setSleepTimerOption(option);
+        sleepTimerRef.current.option = option;
+
+        if (option === "off") {
+            sleepTimerRef.current.targetTime = null;
+            setSleepTimerRemaining(null);
+            return;
+        }
+
+        if (option === "end-of-song") {
+            sleepTimerRef.current.targetTime = null;
+            setSleepTimerRemaining(null);
+            return;
+        }
+
+        const mins = parseInt(option, 10);
+        if (!isNaN(mins) && mins > 0) {
+            const target = Date.now() + mins * 60 * 1000;
+            sleepTimerRef.current.targetTime = target;
+            setSleepTimerRemaining(mins * 60);
+        }
+    }, []);
+
+    // 倒计时心跳检测（每秒更新剩余秒数，时间到时平滑淡出暂停）
+    useEffect(() => {
+        const interval = setInterval(() => {
+            const { option, targetTime } = sleepTimerRef.current;
+            if (option === "off" || option === "end-of-song" || !targetTime) return;
+            const remaining = Math.max(0, Math.ceil((targetTime - Date.now()) / 1000));
+            setSleepTimerRemaining(remaining);
+            if (remaining <= 0) {
+                fadeOutAndPause();
+            }
+        }, 1000);
+        return () => clearInterval(interval);
+    }, [fadeOutAndPause]);
+
     const handleTrackEnd = useCallback(() => {
+        if (sleepTimerRef.current.option === "end-of-song") {
+            fadeOutAndPause();
+            return;
+        }
         setCurrentTrack(prev => {
             setQueueRaw(q => {
                 if (q.length === 0) return q;
@@ -212,9 +307,19 @@ export function MusicProvider({ children }: { children: ReactNode }) {
         // Netease tracks: fetch play URL from API
         if (track.id.startsWith("netease_")) {
             const nid = parseInt(track.id.replace("netease_", ""), 10);
-            const playUrl = await getNeteasePlayUrl(nid);
+            const [playUrl, lyrics, detail] = await Promise.all([
+                getNeteasePlayUrl(nid),
+                !track.lyrics ? getNeteaseLyrics(nid).catch(() => "") : Promise.resolve(track.lyrics),
+                !track.coverUrl ? getNeteaseSongDetail(nid).catch(() => null) : Promise.resolve(null),
+            ]);
             if (!playUrl) return;
             audio.src = playUrl;
+            if (lyrics && !track.lyrics) {
+                track = { ...track, lyrics };
+            }
+            if (detail?.coverUrl && !track.coverUrl) {
+                track = { ...track, coverUrl: detail.coverUrl, artist: track.artist || detail.artists || "" };
+            }
         } else {
             // Local tracks: load blob from IndexedDB
             const blob = await getAudioBlob(track.id);
@@ -468,12 +573,16 @@ export function MusicProvider({ children }: { children: ReactNode }) {
 
     const controlsValue = useMemo<MusicControlsValue>(() => ({
         currentTrack, isPlaying, duration, playMode, queue, volume, showFullPlayer, floatDismissed,
+        sleepTimerOption, sleepTimerRemaining,
         playTrack, playUrl, pause, resume, togglePlay, next, prev, seek,
         setPlayMode, setQueue, removeFromQueue, setVolume, stop, dismissFloat, hideFloat, openFullPlayer, closeFullPlayer,
+        setSleepTimer,
     }), [
         currentTrack, isPlaying, duration, playMode, queue, volume, showFullPlayer, floatDismissed,
+        sleepTimerOption, sleepTimerRemaining,
         playTrack, playUrl, pause, resume, togglePlay, next, prev, seek,
         setQueue, removeFromQueue, setVolume, stop, dismissFloat, hideFloat, openFullPlayer, closeFullPlayer,
+        setSleepTimer,
     ]);
 
     const value = useMemo<MusicContextValue>(() => ({

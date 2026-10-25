@@ -6,11 +6,6 @@ import { useMusicControlsOptional } from "@/lib/music-context";
 import { loadFloatPosition, saveFloatPosition } from "@/lib/float-position-storage";
 
 const DRAG_START_THRESHOLD = 6;
-const SWIPE_DISMISS_EDGE_X = 4;
-const SWIPE_DISMISS_SPEED = 1.5; // px/ms
-const SWIPE_DISMISS_ARMING_X = 88;
-const SWIPE_INERTIA_MS = 140;
-const SWIPE_VELOCITY_RECENT_MS = 180;
 // 与 music.css 中 .music-float / [data-expanded] 的尺寸保持一致
 const COLLAPSED_W = 72;
 const COLLAPSED_H = 72;
@@ -24,8 +19,6 @@ export default function MusicFloat({ hidden }: { hidden?: boolean }) {
     const dragRef = useRef<{
         pointerId: number | null; active: boolean;
         startX: number; startY: number; origX: number; origY: number;
-        lastX: number; lastTime: number;
-        lastLeftSpeed: number; lastLeftSpeedTime: number;
         moved: boolean; startedOnInfo: boolean; dragging: boolean;
     }>({
         pointerId: null,
@@ -34,18 +27,12 @@ export default function MusicFloat({ hidden }: { hidden?: boolean }) {
         startY: 0,
         origX: 0,
         origY: 0,
-        lastX: 0,
-        lastTime: 0,
-        lastLeftSpeed: 0,
-        lastLeftSpeedTime: 0,
         moved: false,
         startedOnInfo: false,
         dragging: false,
     });
-    const dismissTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const [expanded, setExpanded] = useState(false);
     const [dragging, setDragging] = useState(false);
-    const [dismissing, setDismissing] = useState(false);
 
     // 位置记忆：挂载时恢复上次拖放的位置（按当前手机屏幕尺寸夹取，防止换设备后跑出屏）
     useEffect(() => {
@@ -138,22 +125,6 @@ export default function MusicFloat({ hidden }: { hidden?: boolean }) {
         return () => document.removeEventListener("pointerdown", onDocPointerDown, true);
     }, [expanded, collapseExpanded]);
 
-    const dismissFloat = useCallback(() => {
-        if (!player) return;
-        if (dismissTimerRef.current) clearTimeout(dismissTimerRef.current);
-        setDismissing(true);
-        dismissTimerRef.current = setTimeout(() => {
-            player.dismissFloat();
-            setDismissing(false);
-            setExpanded(false);
-            dismissTimerRef.current = null;
-        }, 250);
-    }, [player]);
-
-    useEffect(() => () => {
-        if (dismissTimerRef.current) clearTimeout(dismissTimerRef.current);
-    }, []);
-
     const handlePointerDown = useCallback((e: React.PointerEvent) => {
         const target = e.target as HTMLElement;
         // Let transport buttons keep their native click behavior.
@@ -161,16 +132,11 @@ export default function MusicFloat({ hidden }: { hidden?: boolean }) {
         e.preventDefault();
         e.stopPropagation();
         floatRef.current?.setPointerCapture?.(e.pointerId);
-        const now = performance.now();
         dragRef.current = {
             pointerId: e.pointerId,
             active: true,
             startX: e.clientX, startY: e.clientY,
             origX: pos.x, origY: pos.y,
-            lastX: e.clientX,
-            lastTime: now,
-            lastLeftSpeed: 0,
-            lastLeftSpeedTime: 0,
             moved: false,
             startedOnInfo: Boolean(target.closest(".music-float-info")),
             dragging: false,
@@ -186,16 +152,6 @@ export default function MusicFloat({ hidden }: { hidden?: boolean }) {
         if (d.moved) {
             if (!d.dragging) { d.dragging = true; setDragging(true); }
             const nextPos = clampPos(d.origX + dx, d.origY + dy);
-            const now = performance.now();
-            const dt = Math.max(1, now - d.lastTime);
-            const stepDx = e.clientX - d.lastX;
-            const leftSpeed = stepDx < 0 ? Math.abs(stepDx) / dt : 0;
-            if (leftSpeed > 0) {
-                d.lastLeftSpeed = leftSpeed;
-                d.lastLeftSpeedTime = now;
-            }
-            d.lastX = e.clientX;
-            d.lastTime = now;
             setPos(nextPos);
         }
     }, [clampPos]);
@@ -212,22 +168,6 @@ export default function MusicFloat({ hidden }: { hidden?: boolean }) {
         const dx = e.clientX - d.startX;
         const dy = e.clientY - d.startY;
         const finalPos = clampPos(d.origX + dx, d.origY + dy);
-        const now = performance.now();
-        const dt = Math.max(1, now - d.lastTime);
-        const stepDx = e.clientX - d.lastX;
-        const leftSpeed = stepDx < 0 ? Math.abs(stepDx) / dt : 0;
-        const recentMoveSpeed = now - d.lastLeftSpeedTime <= SWIPE_VELOCITY_RECENT_MS ? d.lastLeftSpeed : 0;
-        const effectiveLeftSpeed = Math.max(leftSpeed, recentMoveSpeed);
-        const inertialX = finalPos.x - effectiveLeftSpeed * SWIPE_INERTIA_MS;
-        const shouldDismiss = d.moved
-            && finalPos.x <= SWIPE_DISMISS_ARMING_X
-            && effectiveLeftSpeed >= SWIPE_DISMISS_SPEED
-            && inertialX <= SWIPE_DISMISS_EDGE_X;
-
-        if (shouldDismiss) {
-            dismissFloat();
-            return;
-        }
 
         if (d.moved) {
             setPos(finalPos);
@@ -245,7 +185,7 @@ export default function MusicFloat({ hidden }: { hidden?: boolean }) {
 
             toggleExpanded();
         }
-    }, [player, clampPos, dismissFloat, toggleExpanded, collapseExpanded]);
+    }, [player, clampPos, toggleExpanded, collapseExpanded]);
 
     const handlePointerUp = useCallback((e: React.PointerEvent) => finishPointer(e), [finishPointer]);
     const handlePointerCancel = useCallback((e: React.PointerEvent) => finishPointer(e), [finishPointer]);
@@ -269,7 +209,6 @@ export default function MusicFloat({ hidden }: { hidden?: boolean }) {
             className="music-float"
             {...(expanded ? { "data-expanded": "" } : {})}
             {...(dragging ? { "data-dragging": "" } : {})}
-            {...(dismissing ? { "data-dismissing": "" } : {})}
             style={{ left: pos.x, top: pos.y }}
             onPointerDown={handlePointerDown}
             onPointerMove={handlePointerMove}

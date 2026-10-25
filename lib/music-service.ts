@@ -265,12 +265,25 @@ export async function getNeteaseLyrics(songId: number): Promise<string> {
         let data: any;
         if (neteaseApiKind() === "sullyos") {
             data = await neteaseWorkerRequest("lyric", { id: songId });
+            if (!data?.lrc?.lyric && !data?.klyric?.lyric && !data?.tlyric?.lyric) {
+                // Try fallback to /lyric/new or /song/lyric if worker supports
+                data = await neteaseWorkerRequest("song/lyric", { id: songId }).catch(() => null) || data;
+            }
         } else {
             const resp = await fetch(withNeteaseParams(`${base}/lyric?id=${songId}`));
             data = await resp.json();
+            // If main /lyric returned empty or code!=200, try /lyric/new fallback
+            if ((!data?.lrc?.lyric || data?.code !== 200) && !data?.nolyric && !data?.uncollected) {
+                try {
+                    const fallbackResp = await fetch(withNeteaseParams(`${base}/lyric/new?id=${songId}`));
+                    const fallbackData = await fallbackResp.json();
+                    if (fallbackData?.lrc?.lyric) data = fallbackData;
+                } catch { /* ignore fallback error */ }
+            }
         }
-        return data?.lrc?.lyric || "";
-    } catch {
+        return data?.lrc?.lyric || data?.klyric?.lyric || data?.tlyric?.lyric || data?.yrc?.lyric || "";
+    } catch (e) {
+        console.warn("[MusicService] Get lyrics failed for song:", songId, e);
         return "";
     }
 }

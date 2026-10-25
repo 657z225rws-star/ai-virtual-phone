@@ -919,17 +919,37 @@
     transform: scale(1.02);
 }
 
-/* ── Share Button ── */
+/* ── Share & Tool Row (分享/消息/定时关闭) ── */
 
 .music-player-share-row {
     position: absolute;
-    left: 150px;
-    right: 150px;
+    left: 80px;
+    right: 80px;
     bottom: 100%;
     display: flex;
-    justify-content: space-between;
+    justify-content: center;
+    align-items: center;
+    gap: 36px;
     padding-bottom: 8px;
     z-index: 2;
+}
+
+.music-player-sleep-btn {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    width: auto !important;
+    padding: 0 4px;
+}
+
+.music-player-sleep-badge {
+    font-size: calc(11px * var(--app-text-scale, 1));
+    font-weight: 500;
+    font-variant-numeric: tabular-nums;
+    color: var(--c-music-accent);
+    opacity: 0.85;
+    letter-spacing: -0.2px;
 }
 
 .music-player-share-btn {
@@ -1112,12 +1132,6 @@
         0 8px 24px var(--c-music-accent-dim),
         0 2px 8px var(--c-music-accent-dim);
     border: 1px solid var(--c-music-surface);
-}
-
-.music-float[data-dismissing] {
-    transform: translateX(-120%) scale(0.8);
-    opacity: 0;
-    pointer-events: none;
 }
 
 /* 拖拽中不过渡 left/top，否则跟手会拖沓 */
@@ -1614,6 +1628,26 @@
     overflow: visible;
     padding: 0;
     gap: 10px;
+}
+
+.music-daily-expand-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    width: 100%;
+    margin-top: 8px;
+    padding: 10px 16px;
+    border: none;
+    background: none;
+    color: var(--c-music-accent);
+    font-size: calc(11.7px * var(--app-text-scale, 1));
+    cursor: pointer;
+    transition: opacity 0.2s ease;
+}
+
+.music-daily-expand-btn:active {
+    opacity: 0.6;
 }
 
 .music-hot-list {
@@ -2290,6 +2324,30 @@
     cursor: pointer;
     text-align: left;
     transition: background 0.15s;
+}
+
+.music-sleep-picker-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    padding: 13px 20px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    text-align: left;
+    color: var(--c-music-text);
+    font-size: calc(13px * var(--app-text-scale, 1));
+    transition: background 0.15s;
+}
+
+.music-sleep-picker-item:active {
+    background: var(--c-music-surface);
+}
+
+.music-sleep-picker-item[data-active="true"] {
+    color: var(--c-music-gold, #ec4141);
+    font-weight: 600;
 }
 
 .music-playlist-picker-item:active {
