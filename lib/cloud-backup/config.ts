@@ -30,11 +30,15 @@ export const DEFAULT_CLOUD_BACKUP_CONFIG: CloudBackupConfig = {
   excludeMedia: true,
 };
 
-/** Strip trailing slashes; tolerate a pasted URL with or without protocol. */
+/** Strip trailing slashes; tolerate a pasted URL with or without protocol.
+ * 也容忍多粘贴的 API 子路径后缀（如 /rest/v1、/storage/v1），只留项目根地址，
+ * 否则拼上 /storage/v1 后会撞进 PostgREST 报 404 PGRST125。 */
 export function normalizeBackupUrl(url: string): string {
   const trimmed = (url || "").trim().replace(/\/+$/, "");
   if (!trimmed) return "";
-  return /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+  const withProtocol = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+  // 依次剥掉可能被误粘贴的已知子路径后缀（大小写不敏感，可重复叠加如 /rest/v1/ ）
+  return withProtocol.replace(/\/(rest|storage)\/v1(\?.*)?$/i, "");
 }
 
 export function loadCloudBackupConfig(): CloudBackupConfig {
