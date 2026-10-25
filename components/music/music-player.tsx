@@ -135,6 +135,13 @@ export default function MusicPlayer() {
     const [activeLyricIdx, setActiveLyricIdx] = useState(-1);
     const lyricsContainerRef = useRef<HTMLDivElement>(null);
 
+    // 歌词滑动定位跳播状态
+    const [isScrollingLyrics, setIsScrollingLyrics] = useState(false);
+    const [scrolledLyricIdx, setScrolledLyricIdx] = useState<number | null>(null);
+    const isUserScrollingRef = useRef(false);
+    const scrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const userTouchActiveRef = useRef(false);
+
     useEffect(() => {
         const lrc = player.currentTrack?.lyrics || "";
         if (!lrc) {
@@ -167,11 +174,82 @@ export default function MusicPlayer() {
         setActiveLyricIdx(idx);
     }, [player.currentTime]);
 
-    // Auto-scroll lyrics
+    // 居中计算辅助：找出最靠近容器视口垂直中线的歌词行
+    const updateScrolledLyricIndex = useCallback(() => {
+        const container = lyricsContainerRef.current;
+        if (!container || parsedLyrics.current.length === 0) return;
+        const containerRect = container.getBoundingClientRect();
+        const centerY = containerRect.top + containerRect.height / 2;
+        let closestIdx = 0;
+        let minDistance = Infinity;
+
+        const children = container.children;
+        for (let i = 0; i < children.length; i++) {
+            const el = children[i] as HTMLElement;
+            if (!el.classList.contains("music-player-lyric-line")) continue;
+            const rect = el.getBoundingClientRect();
+            const elCenterY = rect.top + rect.height / 2;
+            const dist = Math.abs(elCenterY - centerY);
+            if (dist < minDistance) {
+                minDistance = dist;
+                closestIdx = i;
+            }
+        }
+        setScrolledLyricIdx(closestIdx);
+    }, []);
+
+    // 歌词容器滚动监听
+    const handleLyricsScroll = useCallback(() => {
+        if (!isUserScrollingRef.current) return;
+        updateScrolledLyricIndex();
+        if (scrollTimeoutRef.current) clearTimeout(scrollTimeoutRef.current);
+        // 如果用户手指还在拖动，不启动恢复倒计时
+        if (!userTouchActiveRef.current) {
+            scrollTimeoutRef.current = setTimeout(() => {
+                isUserScrollingRef.current = false;
+                setIsScrollingLyrics(false);
+                setScrolledLyricIdx(null);
+            }, 3500);
+        }
+    }, [updateScrolledLyricIndex]);
+
+    const handleLyricsPointerDown = useCallback(() => {
+        userTouchActiveRef.current = true;
+        isUserScrollingRef.current = true;
+        setIsScrollingLyrics(true);
+        if (scrollTimeoutRef.current) clearTimeout(scrollTimeoutRef.current);
+        updateScrolledLyricIndex();
+    }, [updateScrolledLyricIndex]);
+
+    const handleLyricsPointerUp = useCallback(() => {
+        userTouchActiveRef.current = false;
+        if (scrollTimeoutRef.current) clearTimeout(scrollTimeoutRef.current);
+        scrollTimeoutRef.current = setTimeout(() => {
+            isUserScrollingRef.current = false;
+            setIsScrollingLyrics(false);
+            setScrolledLyricIdx(null);
+        }, 3500);
+    }, []);
+
+    // 点击某一句歌词跳播
+    const handleSeekToLyric = useCallback((e: React.MouseEvent, time: number) => {
+        e.stopPropagation();
+        player.seek(time);
+        if (!player.isPlaying) player.resume();
+        if (scrollTimeoutRef.current) clearTimeout(scrollTimeoutRef.current);
+        isUserScrollingRef.current = false;
+        userTouchActiveRef.current = false;
+        setIsScrollingLyrics(false);
+        setScrolledLyricIdx(null);
+    }, [player]);
+
+    // Auto-scroll lyrics（仅当非用户拖拽状态时自动居中当前播放行）
     useEffect(() => {
-        if (activeLyricIdx < 0 || !lyricsContainerRef.current) return;
+        if (isUserScrollingRef.current || activeLyricIdx < 0 || !lyricsContainerRef.current) return;
         const el = lyricsContainerRef.current.children[activeLyricIdx] as HTMLElement;
-        scrollElementWithinContainer(lyricsContainerRef.current, el, { behavior: "smooth", block: "center" });
+        if (el) {
+            scrollElementWithinContainer(lyricsContainerRef.current, el, { behavior: "smooth", block: "center" });
+        }
     }, [activeLyricIdx]);
 
     const [liked, setLiked] = useState(false);
@@ -335,21 +413,67 @@ export default function MusicPlayer() {
             {/* Main content area — tap to toggle lyrics */}
             <div
                 className={showLyrics ? "music-player-body music-player-body--lyrics" : "music-player-body"}
-                onClick={() => setShowLyrics(v => !v)}
+                onClick={() => {
+                    // 仅当非歌词拖动浏览状态下点击空白才切换黑胶/歌词
+                    if (!isScrollingLyrics) {
+                        setShowLyrics(v => !v);
+                    }
+                }}
             >
                 {showLyrics ? (
                     /* Lyrics view */
                     hasLyrics ? (
-                        <div className="music-player-lyrics" ref={lyricsContainerRef}>
-                            {parsedLyrics.current.map((line, i) => (
-                                <div
-                                    key={i}
-                                    className="music-player-lyric-line"
-                                    {...(i === activeLyricIdx ? { "data-active": "" } : {})}
-                                >
-                                    {line.text || "\u00A0"}
-                                </div>
-                            ))}
+                        <div
+                            className="music-player-lyrics"
+                            ref={lyricsContainerRef}
+                            onScroll={handleLyricsScroll}
+                            onPointerDown={handleLyricsPointerDown}
+                            onPointerUp={handleLyricsPointerUp}
+                            onPointerCancel={handleLyricsPointerUp}
+                        >
+                            {/* 网易云同款中心准心瞄准线（在滑动歌词时显现） */}
+                            {isScrollingLyrics && (
+                                <div className="music-player-lyric-aim-line" />
+                            )}
+                            {parsedLyrics.current.map((line, i) => {
+                                const isCurrentPlaying = i === activeLyricIdx;
+                                const isFocusedByScroll = isScrollingLyrics && i === scrolledLyricIdx;
+                                return (
+                                    <div
+                                        key={i}
+                                        className={`music-player-lyric-line ${isFocusedByScroll ? "music-player-lyric-line--focused" : ""}`}
+                                        {...(isCurrentPlaying ? { "data-active": "" } : {})}
+                                        onClick={(e) => {
+                                            // 点击该行直接跳播
+                                            handleSeekToLyric(e, line.time);
+                                        }}
+                                    >
+                                        {/* 滑动至当前焦点行时，左侧显示时间 */}
+                                        {isFocusedByScroll && (
+                                            <span className="music-player-lyric-aim-time">
+                                                {formatTime(line.time)}
+                                            </span>
+                                        )}
+                                        <span className="music-player-lyric-text">
+                                            {line.text || "\u00A0"}
+                                        </span>
+                                        {/* 滑动至当前焦点行时，右侧显示小播放键 */}
+                                        {isFocusedByScroll && (
+                                            <button
+                                                type="button"
+                                                className="music-player-lyric-aim-play"
+                                                onClick={(e) => handleSeekToLyric(e, line.time)}
+                                                aria-label="从这里播放"
+                                                title="从这里播放"
+                                            >
+                                                <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+                                                    <path d="M8 5v14l11-7z" />
+                                                </svg>
+                                            </button>
+                                        )}
+                                    </div>
+                                );
+                            })}
                         </div>
                     ) : (
                         <div className="music-player-lyrics" style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
