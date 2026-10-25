@@ -274,32 +274,15 @@ function useDraftNumber(commit: (n: number) => void) {
   return bind;
 }
 
-/** 备份间隔自由输入：数字 + 单位（小时/天），范围 0.5 小时 ~ 14 天。 */
+/** 备份间隔自由输入：以「天」为单位，范围 0.5 小时（约 0.02 天）~ 14 天。 */
 function CloudIntervalInput({ hours, onChange, disabled }: { hours: number; onChange: (h: number) => void; disabled?: boolean }) {
-  const initialUnit: "hours" | "days" = hours >= 24 && Number.isInteger(hours / 24) ? "days" : "hours";
-  const [unit, setUnit] = useState<"hours" | "days">(initialUnit);
-  const fallback = unit === "days"
-    ? String(Number((hours / 24).toFixed(2)))
-    : String(Number(hours.toFixed(1)));
-  const bind = useDraftNumber((n) => onChange(unit === "days" ? n * 24 : n));
+  const bind = useDraftNumber((n) => onChange(n * 24));
+  const fallback = String(Number((hours / 24).toFixed(2)));
   return (
-    <div className="data-cloud-field" style={{ display: "flex", gap: 8, alignItems: "flex-end" }}>
-      <label style={{ flex: 1, minWidth: 0 }}>
-        <span className="menu-desc ml-1">备份间隔</span>
-        <Input type="number" min="0.5" step="any" placeholder={fallback} {...bind(fallback)} disabled={disabled} />
-      </label>
-      <label style={{ width: 86, flexShrink: 0 }}>
-        <span className="menu-desc ml-1">单位</span>
-        <Select
-          value={unit}
-          onChange={(e) => setUnit(e.target.value === "days" ? "days" : "hours")}
-          disabled={disabled}
-        >
-          <option value="hours">小时</option>
-          <option value="days">天</option>
-        </Select>
-      </label>
-    </div>
+    <label className="data-cloud-field">
+      <span className="menu-desc ml-1">备份间隔（天）</span>
+      <Input type="number" step="any" placeholder={fallback} {...bind(fallback)} disabled={disabled} />
+    </label>
   );
 }
 
