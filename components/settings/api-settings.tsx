@@ -10,6 +10,7 @@ import { ConfirmDialog } from "@/components/ui/modal";
 import { Toggle, Input } from "@/components/ui/form";
 import { Alert } from "@/components/ui/feedback";
 import { determineBaseUrl, simpleLLMCall } from "@/lib/api-helpers";
+import { useGridTouchSort } from "@/lib/use-grid-touch-sort";
 
 const DEFAULT_CONFIGS: ApiConfig[] = [
     {
@@ -257,6 +258,27 @@ export function ApiSettings() {
         }
     };
 
+    const handleConfigReorder = useCallback((fromIndex: number, toIndex: number) => {
+        setConfigs((prev) => {
+            const next = [...prev];
+            const [item] = next.splice(fromIndex, 1);
+            next.splice(toIndex, 0, item);
+            saveApiConfigs(next);
+            return next;
+        });
+    }, []);
+
+    const {
+        containerRef: configGridRef,
+        onTouchStart: onCardTouchStart,
+        onTouchMove: onCardTouchMove,
+        onTouchEnd: onCardTouchEnd,
+        onMouseDown: onCardMouseDown,
+        onMouseMove: onCardMouseMove,
+        onMouseUp: onCardMouseUp,
+        shouldAllowClick,
+    } = useGridTouchSort(handleConfigReorder, 300);
+
     if (!isLoaded) return null;
 
     return (
@@ -279,16 +301,30 @@ export function ApiSettings() {
                     </button>
                 </div>
             ) : (
-                <div className="grid grid-cols-2 gap-3">
-                    {configs.map(config => (
+                <div
+                    ref={configGridRef}
+                    className="grid grid-cols-2 gap-3"
+                    onTouchMove={onCardTouchMove}
+                    onTouchEnd={onCardTouchEnd}
+                    onTouchCancel={onCardTouchEnd}
+                    onMouseMove={onCardMouseMove}
+                    onMouseUp={onCardMouseUp}
+                >
+                    {configs.map((config, index) => (
                         <div
                             key={config.id}
-                            className="ui-config-card min-w-0 cursor-pointer"
+                            className="ui-config-card min-w-0 cursor-pointer select-none touch-manipulation"
                             style={{ aspectRatio: "3 / 2", padding: "12px", justifyContent: "space-between" }}
                             role="button"
                             tabIndex={0}
                             aria-label={`编辑 ${config.name || config.provider}`}
-                            onClick={() => setEditingId(config.id)}
+                            onTouchStart={(e) => onCardTouchStart(index, e)}
+                            onMouseDown={(e) => onCardMouseDown(index, e)}
+                            onClick={() => {
+                                if (shouldAllowClick()) {
+                                    setEditingId(config.id);
+                                }
+                            }}
                             onKeyDown={(event) => {
                                 if (event.target !== event.currentTarget) return;
                                 if (event.key === "Enter" || event.key === " ") {
