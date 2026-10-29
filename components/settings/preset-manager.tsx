@@ -26,6 +26,7 @@ import { BottomSheet, ConfirmDialog, TextExpandModal } from "@/components/ui/mod
 import { SwipeActionRow, useSwipeActions } from "@/components/ui/swipe-actions";
 import { notifyMascotPageContext } from "@/lib/mascot-events";
 import { useTouchSort } from "@/lib/use-touch-sort";
+import { useGridTouchSort } from "@/lib/use-grid-touch-sort";
 
 // ── Tag helpers for backward compat (tags[] > featureTag + followUpOnly) ──
 function getPromptTags(p: Prompt): string[] {
@@ -477,6 +478,27 @@ export function PresetManager({ isActive = true }: { isActive?: boolean } = {}) 
 
     const { containerRef: promptListRef, onTouchStart: onPromptTouchStart, onTouchMove: onPromptTouchMove, onTouchEnd: onPromptTouchEnd } = useTouchSort(handlePromptReorder);
 
+    const handlePresetReorder = useCallback((fromIndex: number, toIndex: number) => {
+        setPresets((prev) => {
+            const next = [...prev];
+            const [item] = next.splice(fromIndex, 1);
+            next.splice(toIndex, 0, item);
+            savePresets(next);
+            return next;
+        });
+    }, []);
+
+    const {
+        containerRef: presetGridRef,
+        onTouchStart: onPresetTouchStart,
+        onTouchMove: onPresetTouchMove,
+        onTouchEnd: onPresetTouchEnd,
+        onMouseDown: onPresetMouseDown,
+        onMouseMove: onPresetMouseMove,
+        onMouseUp: onPresetMouseUp,
+        shouldAllowClick: shouldAllowPresetClick,
+    } = useGridTouchSort(handlePresetReorder, 300);
+
     // ── 条目左滑操作（微信式：左滑露出「新增/删除」） ──
     const swipe = useSwipeActions();
 
@@ -713,16 +735,31 @@ export function PresetManager({ isActive = true }: { isActive?: boolean } = {}) 
                             </div>
                         </div>
                     ) : (
-                        <div className="flex flex-col gap-3">
-                            {presets.map(preset => (
+                        <div
+                            ref={presetGridRef}
+                            className="flex flex-col gap-3"
+                            onTouchMove={onPresetTouchMove}
+                            onTouchEnd={onPresetTouchEnd}
+                            onTouchCancel={onPresetTouchEnd}
+                            onMouseMove={onPresetMouseMove}
+                            onMouseUp={onPresetMouseUp}
+                        >
+                            {presets.map((preset, index) => (
                                 <div
                                     key={preset.id}
-                                    className="ui-config-card min-w-0 cursor-pointer"
+                                    className="ui-config-card min-w-0 cursor-pointer select-none touch-manipulation"
                                     style={{ minHeight: "84px", padding: "16px", justifyContent: "space-between" }}
                                     role="button"
                                     tabIndex={0}
                                     aria-label={`编辑 ${preset.name || "预设"}`}
-                                    onClick={() => { setEditingId(preset.id); setViewMode("detail"); }}
+                                    onTouchStart={(e) => onPresetTouchStart(index, e)}
+                                    onMouseDown={(e) => onPresetMouseDown(index, e)}
+                                    onClick={() => {
+                                        if (shouldAllowPresetClick()) {
+                                            setEditingId(preset.id);
+                                            setViewMode("detail");
+                                        }
+                                    }}
                                     onKeyDown={(event) => {
                                         if (event.target !== event.currentTarget) return;
                                         if (event.key === "Enter" || event.key === " ") {

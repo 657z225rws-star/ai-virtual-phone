@@ -6,6 +6,7 @@ import { SettingsContext } from "../phone-settings-app";
 import { loadUserIdentities, saveUserIdentities } from "@/lib/settings-storage";
 import { Input } from "@/components/ui/form";
 import { ConfirmDialog } from "@/components/ui/modal";
+import { useGridTouchSort } from "@/lib/use-grid-touch-sort";
 
 export type UserIdentity = {
     id: string;
@@ -83,6 +84,27 @@ export function UserIdentitySettings() {
         saveUserIdentities(next);
     }, []);
 
+    const handleIdentityReorder = useCallback((fromIndex: number, toIndex: number) => {
+        setIdentitiesRaw((prev) => {
+            const next = [...prev];
+            const [item] = next.splice(fromIndex, 1);
+            next.splice(toIndex, 0, item);
+            saveUserIdentities(next);
+            return next;
+        });
+    }, []);
+
+    const {
+        containerRef: identityGridRef,
+        onTouchStart: onIdentityTouchStart,
+        onTouchMove: onIdentityTouchMove,
+        onTouchEnd: onIdentityTouchEnd,
+        onMouseDown: onIdentityMouseDown,
+        onMouseMove: onIdentityMouseMove,
+        onMouseUp: onIdentityMouseUp,
+        shouldAllowClick: shouldAllowIdentityClick,
+    } = useGridTouchSort(handleIdentityReorder, 300);
+
     const addIdentity = useCallback(() => {
         const newIdentity: UserIdentity = {
             id: `identity-${Date.now()}`,
@@ -145,16 +167,30 @@ export function UserIdentitySettings() {
                     </button>
                 </div>
             ) : (
-                <div className="grid grid-cols-2 gap-3">
-                    {identities.map(identity => (
+                <div
+                    ref={identityGridRef}
+                    className="grid grid-cols-2 gap-3"
+                    onTouchMove={onIdentityTouchMove}
+                    onTouchEnd={onIdentityTouchEnd}
+                    onTouchCancel={onIdentityTouchEnd}
+                    onMouseMove={onIdentityMouseMove}
+                    onMouseUp={onIdentityMouseUp}
+                >
+                    {identities.map((identity, index) => (
                         <div
                             key={identity.id}
-                            className="ui-config-card min-w-0 cursor-pointer overflow-hidden"
+                            className="ui-config-card min-w-0 cursor-pointer overflow-hidden select-none touch-manipulation"
                             style={{ aspectRatio: "3 / 2", padding: "12px", justifyContent: "space-between" }}
                             role="button"
                             tabIndex={0}
                             aria-label={`编辑 ${identity.name || "身份"}`}
-                            onClick={() => setEditingId(identity.id)}
+                            onTouchStart={(e) => onIdentityTouchStart(index, e)}
+                            onMouseDown={(e) => onIdentityMouseDown(index, e)}
+                            onClick={() => {
+                                if (shouldAllowIdentityClick()) {
+                                    setEditingId(identity.id);
+                                }
+                            }}
                             onKeyDown={(event) => {
                                 if (event.target !== event.currentTarget) return;
                                 if (event.key === "Enter" || event.key === " ") {

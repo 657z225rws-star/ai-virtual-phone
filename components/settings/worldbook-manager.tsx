@@ -16,6 +16,7 @@ import { SettingsContext } from "../phone-settings-app";
 import { BottomSheet, ConfirmDialog, TextExpandModal } from "@/components/ui/modal";
 import { SwipeActionRow, useSwipeActions } from "@/components/ui/swipe-actions";
 import { notifyMascotPageContext } from "@/lib/mascot-events";
+import { useGridTouchSort } from "@/lib/use-grid-touch-sort";
 
 export function WorldBookManager({ isActive = true }: { isActive?: boolean } = {}) {
     const [books, setBooks] = useState<WorldBookConfig[]>([]);
@@ -320,6 +321,27 @@ export function WorldBookManager({ isActive = true }: { isActive?: boolean } = {
     };
 
     // --- Entry Level Operations ---
+    const handleBookReorder = useCallback((fromIndex: number, toIndex: number) => {
+        setBooks((prev) => {
+            const next = [...prev];
+            const [item] = next.splice(fromIndex, 1);
+            next.splice(toIndex, 0, item);
+            saveWorldBooks(next);
+            return next;
+        });
+    }, []);
+
+    const {
+        containerRef: bookGridRef,
+        onTouchStart: onBookTouchStart,
+        onTouchMove: onBookTouchMove,
+        onTouchEnd: onBookTouchEnd,
+        onMouseDown: onBookMouseDown,
+        onMouseMove: onBookMouseMove,
+        onMouseUp: onBookMouseUp,
+        shouldAllowClick: shouldAllowBookClick,
+    } = useGridTouchSort(handleBookReorder, 300);
+
     const activeBook = books.find(b => b.id === activeBookId);
 
     const visibleEntries = activeBook?.entries || [];
@@ -494,16 +516,31 @@ export function WorldBookManager({ isActive = true }: { isActive?: boolean } = {
                             </button>
                         </div>
                     ) : (
-                        <div className="grid grid-cols-2 gap-3">
-                            {books.map(book => (
+                        <div
+                            ref={bookGridRef}
+                            className="grid grid-cols-2 gap-3"
+                            onTouchMove={onBookTouchMove}
+                            onTouchEnd={onBookTouchEnd}
+                            onTouchCancel={onBookTouchEnd}
+                            onMouseMove={onBookMouseMove}
+                            onMouseUp={onBookMouseUp}
+                        >
+                            {books.map((book, index) => (
                                 <div
                                     key={book.id}
-                                    className="ui-config-card min-w-0 cursor-pointer"
+                                    className="ui-config-card min-w-0 cursor-pointer select-none touch-manipulation"
                                     style={{ aspectRatio: "3 / 2", padding: "12px", justifyContent: "space-between" }}
                                     role="button"
                                     tabIndex={0}
                                     aria-label={`编辑 ${book.name || "世界书"}`}
-                                    onClick={() => { setActiveBookId(book.id); setViewMode("detail"); }}
+                                    onTouchStart={(e) => onBookTouchStart(index, e)}
+                                    onMouseDown={(e) => onBookMouseDown(index, e)}
+                                    onClick={() => {
+                                        if (shouldAllowBookClick()) {
+                                            setActiveBookId(book.id);
+                                            setViewMode("detail");
+                                        }
+                                    }}
                                     onKeyDown={(event) => {
                                         if (event.target !== event.currentTarget) return;
                                         if (event.key === "Enter" || event.key === " ") {

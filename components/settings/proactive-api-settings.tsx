@@ -9,6 +9,7 @@ import { Alert } from "@/components/ui/feedback";
 import { ConfirmDialog } from "@/components/ui/modal";
 import { Input, Select } from "@/components/ui/form";
 import { SettingsContext } from "../phone-settings-app";
+import { useGridTouchSort } from "@/lib/use-grid-touch-sort";
 import { loadApiConfigs } from "@/lib/settings-storage";
 import { determineBaseUrl } from "@/lib/api-helpers";
 import type { ApiConfig } from "@/lib/settings-types";
@@ -53,6 +54,24 @@ export function ProactiveApiSettings({ onNotice }: { onNotice: (msg: string) => 
         setConfig(next);
         return next;
     }, [config.activeCloudApiId]);
+
+    const handleCloudApiReorder = useCallback((fromIndex: number, toIndex: number) => {
+        const nextEntries = [...config.cloudApis];
+        const [item] = nextEntries.splice(fromIndex, 1);
+        nextEntries.splice(toIndex, 0, item);
+        persist(nextEntries, config.activeCloudApiId);
+    }, [config.cloudApis, config.activeCloudApiId, persist]);
+
+    const {
+        containerRef: cloudApiGridRef,
+        onTouchStart: onCloudApiTouchStart,
+        onTouchMove: onCloudApiTouchMove,
+        onTouchEnd: onCloudApiTouchEnd,
+        onMouseDown: onCloudApiMouseDown,
+        onMouseMove: onCloudApiMouseMove,
+        onMouseUp: onCloudApiMouseUp,
+        shouldAllowClick: shouldAllowCloudApiClick,
+    } = useGridTouchSort(handleCloudApiReorder, 300);
 
     const addConfig = useCallback(() => {
         // 刻意从存储读最新配置、依赖为空：这样这个回调是稳定的，
@@ -178,18 +197,34 @@ export function ProactiveApiSettings({ onNotice }: { onNotice: (msg: string) => 
                     </button>
                 </div>
             ) : (
-                <div className="grid grid-cols-2 gap-3">
-                    {config.cloudApis.map(entry => {
+                <div
+                    ref={cloudApiGridRef}
+                    className="grid grid-cols-2 gap-3"
+                    onTouchMove={onCloudApiTouchMove}
+                    onTouchEnd={onCloudApiTouchEnd}
+                    onTouchCancel={onCloudApiTouchEnd}
+                    onMouseMove={onCloudApiMouseMove}
+                    onMouseUp={onCloudApiMouseUp}
+                >
+                    {config.cloudApis.map((entry, index) => {
                         const isActive = entry.id === (activeEntry?.id ?? "");
                         return (
                             <div
                                 key={entry.id}
-                                className="ui-config-card min-w-0 cursor-pointer"
+                                className="ui-config-card min-w-0 cursor-pointer select-none touch-manipulation"
                                 style={{ aspectRatio: "3 / 2", padding: "12px", justifyContent: "space-between" }}
                                 role="button"
                                 tabIndex={0}
                                 aria-label={`编辑 ${entry.name}`}
-                                onClick={() => { setIsNew(false); setEditingId(entry.id); setStatus(null); }}
+                                onTouchStart={(e) => onCloudApiTouchStart(index, e)}
+                                onMouseDown={(e) => onCloudApiMouseDown(index, e)}
+                                onClick={() => {
+                                    if (shouldAllowCloudApiClick()) {
+                                        setIsNew(false);
+                                        setEditingId(entry.id);
+                                        setStatus(null);
+                                    }
+                                }}
                                 onKeyDown={(event) => {
                                     if (event.target !== event.currentTarget) return;
                                     if (event.key === "Enter" || event.key === " ") {

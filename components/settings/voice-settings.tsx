@@ -9,6 +9,7 @@ import { synthesizeSpeech } from "@/lib/tts-service";
 import { ConfirmDialog } from "@/components/ui/modal";
 import { Toggle, Input, SecretInput } from "@/components/ui/form";
 import { Alert } from "@/components/ui/feedback";
+import { useGridTouchSort } from "@/lib/use-grid-touch-sort";
 
 const SUPPORTED_VOICE_PROVIDERS = new Set(["Minimax", "OpenAI"]);
 const MINIMAX_BASE_URL_OPTIONS = [
@@ -248,6 +249,27 @@ export function VoiceSettings() {
         setConfigs(newConfigs);
         saveVoiceConfigs(newConfigs);
     }, []);
+
+    const handleVoiceConfigReorder = useCallback((fromIndex: number, toIndex: number) => {
+        setConfigs((prev) => {
+            const next = [...prev];
+            const [item] = next.splice(fromIndex, 1);
+            next.splice(toIndex, 0, item);
+            saveVoiceConfigs(next);
+            return next;
+        });
+    }, []);
+
+    const {
+        containerRef: voiceGridRef,
+        onTouchStart: onVoiceTouchStart,
+        onTouchMove: onVoiceTouchMove,
+        onTouchEnd: onVoiceTouchEnd,
+        onMouseDown: onVoiceMouseDown,
+        onMouseMove: onVoiceMouseMove,
+        onMouseUp: onVoiceMouseUp,
+        shouldAllowClick: shouldAllowVoiceClick,
+    } = useGridTouchSort(handleVoiceConfigReorder, 300);
 
     const addConfig = useCallback(() => {
         const newConfig: VoiceApiConfig = {
@@ -562,16 +584,30 @@ export function VoiceSettings() {
                     </button>
                 </div>
             ) : (
-                <div className="grid grid-cols-2 gap-3">
-                    {configs.map(config => (
+                <div
+                    ref={voiceGridRef}
+                    className="grid grid-cols-2 gap-3"
+                    onTouchMove={onVoiceTouchMove}
+                    onTouchEnd={onVoiceTouchEnd}
+                    onTouchCancel={onVoiceTouchEnd}
+                    onMouseMove={onVoiceMouseMove}
+                    onMouseUp={onVoiceMouseUp}
+                >
+                    {configs.map((config, index) => (
                         <div
                             key={config.id}
-                            className="ui-config-card min-w-0 cursor-pointer"
+                            className="ui-config-card min-w-0 cursor-pointer select-none touch-manipulation"
                             style={{ aspectRatio: "3 / 2", padding: "12px", justifyContent: "space-between" }}
                             role="button"
                             tabIndex={0}
                             aria-label={`编辑 ${config.name || config.provider}`}
-                            onClick={() => setEditingId(config.id)}
+                            onTouchStart={(e) => onVoiceTouchStart(index, e)}
+                            onMouseDown={(e) => onVoiceMouseDown(index, e)}
+                            onClick={() => {
+                                if (shouldAllowVoiceClick()) {
+                                    setEditingId(config.id);
+                                }
+                            }}
                             onKeyDown={(event) => {
                                 if (event.target !== event.currentTarget) return;
                                 if (event.key === "Enter" || event.key === " ") {

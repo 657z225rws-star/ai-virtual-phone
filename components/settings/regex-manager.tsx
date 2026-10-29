@@ -20,6 +20,7 @@ import { SettingsContext } from "../phone-settings-app";
 import { BottomSheet, ConfirmDialog, TextExpandModal } from "@/components/ui/modal";
 import { SwipeActionRow, useSwipeActions } from "@/components/ui/swipe-actions";
 import { notifyMascotPageContext } from "@/lib/mascot-events";
+import { useGridTouchSort } from "@/lib/use-grid-touch-sort";
 
 function getRuleTags(rule: Pick<RegexRule, "tags">): string[] {
     return rule.tags && rule.tags.length > 0 ? [...rule.tags] : [];
@@ -257,6 +258,27 @@ export function RegexManager({ isActive = true }: { isActive?: boolean } = {}) {
         await downloadFile(blob, `${group.name || "regex_group"}.json`);
     };
 
+    const handleGroupReorder = useCallback((fromIndex: number, toIndex: number) => {
+        setGroups((prev) => {
+            const next = [...prev];
+            const [item] = next.splice(fromIndex, 1);
+            next.splice(toIndex, 0, item);
+            saveRegexes(next);
+            return next;
+        });
+    }, []);
+
+    const {
+        containerRef: groupGridRef,
+        onTouchStart: onGroupTouchStart,
+        onTouchMove: onGroupTouchMove,
+        onTouchEnd: onGroupTouchEnd,
+        onMouseDown: onGroupMouseDown,
+        onMouseMove: onGroupMouseMove,
+        onMouseUp: onGroupMouseUp,
+        shouldAllowClick: shouldAllowGroupClick,
+    } = useGridTouchSort(handleGroupReorder, 300);
+
     // --- Rule Level Operations ---
     const activeGroup = groups.find(g => g.id === activeGroupId);
 
@@ -431,16 +453,31 @@ export function RegexManager({ isActive = true }: { isActive?: boolean } = {}) {
                             </button>
                         </div>
                     ) : (
-                        <div className="flex flex-col gap-3">
-                            {groups.map(group => (
+                        <div
+                            ref={groupGridRef}
+                            className="flex flex-col gap-3"
+                            onTouchMove={onGroupTouchMove}
+                            onTouchEnd={onGroupTouchEnd}
+                            onTouchCancel={onGroupTouchEnd}
+                            onMouseMove={onGroupMouseMove}
+                            onMouseUp={onGroupMouseUp}
+                        >
+                            {groups.map((group, index) => (
                                 <div
                                     key={group.id}
-                                    className="ui-config-card min-w-0 cursor-pointer"
+                                    className="ui-config-card min-w-0 cursor-pointer select-none touch-manipulation"
                                     style={{ minHeight: "84px", padding: "16px", justifyContent: "space-between" }}
                                     role="button"
                                     tabIndex={0}
                                     aria-label={`编辑 ${group.name || "正则组"}`}
-                                    onClick={() => { setActiveGroupId(group.id); setViewMode("detail"); }}
+                                    onTouchStart={(e) => onGroupTouchStart(index, e)}
+                                    onMouseDown={(e) => onGroupMouseDown(index, e)}
+                                    onClick={() => {
+                                        if (shouldAllowGroupClick()) {
+                                            setActiveGroupId(group.id);
+                                            setViewMode("detail");
+                                        }
+                                    }}
                                     onKeyDown={(event) => {
                                         if (event.target !== event.currentTarget) return;
                                         if (event.key === "Enter" || event.key === " ") {
