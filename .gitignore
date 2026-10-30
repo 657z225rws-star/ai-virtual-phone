@@ -30,3 +30,7 @@ tools/weixin-local-assistant/config.txt
 *.ts.net.key
 /public/models/world-builder/
 .next-fresh/
+
+# 本地数据与私人文件,不入库
+/wechat-aux/
+/data/Tavo_Prayer_Gemini_Native.json
