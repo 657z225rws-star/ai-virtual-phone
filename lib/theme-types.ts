@@ -140,6 +140,9 @@ export const LEGACY_DEFAULT_FONT_FAMILY =
   '"PingFang SC", "Hiragino Sans GB", "Noto Sans SC", "SF Pro Text", "Inter", "Segoe UI", sans-serif';
 export const DEFAULT_FONT_FAMILY =
   '"MiSans", "PingFang SC", "Hiragino Sans GB", "Noto Sans SC", "SF Pro Text", "Inter", "Segoe UI", sans-serif';
+/* 触屏设备（手机/平板）的默认字体：系统字体优先保留原生观感（iOS 苹方/安卓思源），MiSans 兜底 */
+export const MOBILE_DEFAULT_FONT_FAMILY =
+  '"PingFang SC", "Hiragino Sans GB", "Noto Sans SC", "MiSans", "SF Pro Text", "Segoe UI", sans-serif';
 
 /* ═══════════════════════════════════════════
    Helpers

@@ -89,6 +89,7 @@ import {
 import {
   DEFAULT_THEME_PROFILE,
   DEFAULT_FONT_FAMILY,
+  MOBILE_DEFAULT_FONT_FAMILY,
   normalizeThemeProfile,
   resolveActiveIconSkins,
   type ThemeProfile
@@ -1280,11 +1281,28 @@ export function DesktopShell({ initialThemeProfile, initialThemeAssets }: Deskto
   // This allows globalCustomCSS to override theme colors without !important
   const themeOverridesCSS = useMemo(() => {
     const { "--app-font-family": _removed, ...restOverrides } = cssOverrides;
-    const vars: string[] = [`  --app-font-family: ${resolvedFontFamily}, ${EMOJI_FONTS};`];
-    for (const [key, value] of Object.entries(restOverrides)) {
-      if (key.startsWith("--") && value) vars.push(`  ${key}: ${value};`);
-    }
-    return `:root {\n${vars.join("\n")}\n}`;
+    const restBlock = restOverrides && Object.values(restOverrides).some(Boolean)
+      ? `\n:root {\n${Object.entries(restOverrides)
+          .filter(([key, value]) => key.startsWith("--") && value)
+          .map(([key, value]) => `  ${key}: ${value};`)
+          .join("\n")}\n}`
+      : "";
+    // 字体块：默认字体时按设备分流（桌面 MiSans / 触屏系统字体优先）；
+    // 用户显式选了字体或上传了字体文件则全局统一，不做设备分流
+    const usingDefaultFont = resolvedFontFamily === DEFAULT_FONT_FAMILY;
+    const fontBlock = usingDefaultFont
+      ? [
+          `:root {`,
+          `  --app-font-family: ${resolvedFontFamily}, ${EMOJI_FONTS};`,
+          `}`,
+          `@media (pointer: coarse) {`,
+          `:root {`,
+          `  --app-font-family: ${MOBILE_DEFAULT_FONT_FAMILY}, ${EMOJI_FONTS};`,
+          `}`,
+          `}`,
+        ].join("\n")
+      : `:root {\n  --app-font-family: ${resolvedFontFamily}, ${EMOJI_FONTS};\n}`;
+    return `${fontBlock}${restBlock}`;
   }, [cssOverrides, resolvedFontFamily]);
   const uploadedFontOverrideCSS = useMemo(() => {
     if (!fontDataUrl) return "";

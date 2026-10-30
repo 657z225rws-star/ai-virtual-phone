@@ -241,6 +241,14 @@
   --ease-breathe: cubic-bezier(0.45, 0, 0.55, 1);
 }
 
+/* 触屏设备（手机/平板）：系统字体优先，保留原生观感（iOS 苹方/安卓思源），MiSans 兜底。
+   与 desktop-shell 主题注入里的同款媒体查询配套；用户显式选择的自定义字体不受此影响。 */
+@media (pointer: coarse) {
+  :root {
+    --app-font-family: "PingFang SC", "Hiragino Sans GB", "Noto Sans SC", "MiSans", "SF Pro Text", "Segoe UI", sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", "Twemoji Mozilla";
+  }
+}
+
 /* ═══════════════════════════════════════════
    聊天 App 独立色板 (.chat-app)
    与全局主题隔离，修改全局色不影响聊天页面
