@@ -136,8 +136,10 @@ export type ThemeProfile = {
 /* ═══════════════════════════════════════════
    Default font family
    ═══════════════════════════════════════════ */
-export const DEFAULT_FONT_FAMILY =
+export const LEGACY_DEFAULT_FONT_FAMILY =
   '"PingFang SC", "Hiragino Sans GB", "Noto Sans SC", "SF Pro Text", "Inter", "Segoe UI", sans-serif';
+export const DEFAULT_FONT_FAMILY =
+  '"MiSans", "PingFang SC", "Hiragino Sans GB", "Noto Sans SC", "SF Pro Text", "Inter", "Segoe UI", sans-serif';
 
 /* ═══════════════════════════════════════════
    Helpers
@@ -320,7 +322,9 @@ export function normalizeThemeProfile(raw: unknown): ThemeProfile {
   base.fontAssetId = typeof source.fontAssetId === "string" ? source.fontAssetId : null;
 
   base.fontFamily = typeof source.fontFamily === "string" && (source.fontFamily as string).trim()
-    ? (source.fontFamily as string).trim()
+    ? (source.fontFamily as string).trim() === LEGACY_DEFAULT_FONT_FAMILY
+      ? DEFAULT_FONT_FAMILY // 旧版默认字体栈自动迁移到新版（MiSans 领衔）
+      : (source.fontFamily as string).trim()
     : DEFAULT_FONT_FAMILY;
 
   // ── Display ──

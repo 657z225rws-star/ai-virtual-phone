@@ -192,7 +192,7 @@
   --phone-case-color-top: #c8ccce;
   --phone-case-color-bottom: #a8acb0;
   --phone-case-highlight: rgba(255, 255, 255, 0.5);
-  --app-font-family: "PingFang SC", "Hiragino Sans GB", "Noto Sans SC", "SF Pro Text", "Inter", "Segoe UI", sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", "Twemoji Mozilla";
+  --app-font-family: "MiSans", "PingFang SC", "Hiragino Sans GB", "Noto Sans SC", "SF Pro Text", "Inter", "Segoe UI", sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", "Twemoji Mozilla";
   --app-text-scale: 1;
   /* 主屏顶部外边距：收紧顶部留白（仅容器外边距，不影响图标/组件格子定位）。 */
   --home-grid-top-offset: 64px;

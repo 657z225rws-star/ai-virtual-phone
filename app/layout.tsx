@@ -29,6 +29,8 @@ export default function RootLayout({
     <html lang="zh-CN" suppressHydrationWarning>
       <head>
         <link rel="manifest" href="/manifest.webmanifest" />
+        {/* MiSans 可变字体（小米官方免费商用字体包，来源 hyperos.mi.com/font；web 切片版取自 npm misans-vf 包） */}
+        <link rel="stylesheet" href="/fonts/misans/MiSans.min.css" />
         <meta name="theme-color" content="#f8f7f2" />
         <link rel="apple-touch-icon" href="/icon-192.png" />
         <link rel="icon" href="/icon-192.png" type="image/png" />

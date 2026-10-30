@@ -1253,7 +1253,7 @@ export function DesktopShell({ initialThemeProfile, initialThemeAssets }: Deskto
     if (!match) return;
     const fontName = match[1].trim();
     const systemFonts = [
-      "PingFang SC", "Hiragino Sans GB", "Noto Sans SC", "Noto Serif SC", "Source Han Serif SC", "SF Pro Text", "Inter", "Segoe UI",
+      "MiSans", "PingFang SC", "Hiragino Sans GB", "Noto Sans SC", "Noto Serif SC", "Source Han Serif SC", "SF Pro Text", "Inter", "Segoe UI",
       "Microsoft YaHei", "STKaiti", "KaiTi", "Arial", "Helvetica", "AIVirtualPhoneUserFont",
       "Huiwen", "Bodoni Moda", "EB Garamond", "Long Cang", "Special Elite", "Cinzel", "Press Start 2P",
       "Game Hall Fredoka", "Game Hall Caveat", "Game Hall Zen Maru Gothic",
@@ -4123,7 +4123,7 @@ html,body{margin:0;padding:0;width:100%;height:100%;background:#121110;color:rgb
                 </footer>
               ) : null}
               <DebugPromptPanel />
-              <QuickActionFloat />
+              <QuickActionFloat activeApp={activeApp} />
               <MascotFloat />
 
               {/* Widget Picker Bottom Sheet */}

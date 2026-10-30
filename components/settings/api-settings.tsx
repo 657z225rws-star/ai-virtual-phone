@@ -60,10 +60,10 @@ const GEMINI_THINKING_LEVEL_OPTIONS: Array<{ value: string; label: string }> = [
     { value: "high", label: "高（推理更强）" },
 ];
 
-export function ApiSettings() {
+export function ApiSettings({ initialEditingId, onExitToReturnApp }: { initialEditingId?: string | null; onExitToReturnApp?: () => void } = {}) {
     const { setSubpageRightAction } = useContext(SettingsContext);
     const [configs, setConfigs] = useState<ApiConfig[]>([]);
-    const [editingId, setEditingId] = useState<string | null>(null);
+    const [editingId, setEditingId] = useState<string | null>(initialEditingId ?? null);
     const [isNewConfig, setIsNewConfig] = useState(false);
     const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
     const [isLoaded, setIsLoaded] = useState(false);
@@ -87,6 +87,14 @@ export function ApiSettings() {
         }
         setIsLoaded(true);
     }, []);
+
+    // 深链编辑目标变化时同步（同一页面连续两次导航时组件不会重挂载）
+    useEffect(() => {
+        if (initialEditingId) {
+            setEditingId(initialEditingId);
+            setIsNewConfig(false);
+        }
+    }, [initialEditingId]);
 
     const persist = useCallback((newConfigs: ApiConfig[]) => {
         setConfigs(newConfigs);
@@ -380,9 +388,9 @@ export function ApiSettings() {
                 <div className="modal-overlay modal-overlay-bottom">
                     <div className="modal-sheet" data-ui="modal-sheet">
                         <div className="modal-header" data-ui="modal-header">
-                            <button onClick={() => { if (isNewConfig && editingId) removeConfig(editingId); setIsNewConfig(false); setEditingId(null); }} className="modal-header-btn modal-header-btn-muted"><X size={18} /></button>
+                            <button onClick={() => { if (isNewConfig && editingId) removeConfig(editingId); setIsNewConfig(false); setEditingId(null); if (onExitToReturnApp) onExitToReturnApp(); }} className="modal-header-btn modal-header-btn-muted"><X size={18} /></button>
                             <span className="modal-header-title">{isNewConfig ? "添加配置" : "编辑配置"}</span>
-                            <button onClick={() => { setIsNewConfig(false); setEditingId(null); }} className="modal-header-btn modal-header-btn-action"><Check size={18} /></button>
+                            <button onClick={() => { setIsNewConfig(false); setEditingId(null); if (onExitToReturnApp) onExitToReturnApp(); }} className="modal-header-btn modal-header-btn-action"><Check size={18} /></button>
                         </div>
 
                         <div className="modal-body hide-scrollbar flex flex-col gap-4 pb-10" data-ui="modal-body">

@@ -117,10 +117,18 @@ const AutoResizeTextarea = ({ value, onChange, placeholder, style, rows = 1, cla
     );
 };
 
-export function PresetManager({ isActive = true }: { isActive?: boolean } = {}) {
+export function PresetManager({ isActive = true, initialEditingId, onExitToReturnApp }: { isActive?: boolean; initialEditingId?: string | null; onExitToReturnApp?: () => void } = {}) {
     const [presets, setPresets] = useState<PresetConfig[]>([]);
-    const [editingId, setEditingId] = useState<string | null>(null);
-    const [viewMode, setViewMode] = useState<"list" | "detail">("list");
+    const [editingId, setEditingId] = useState<string | null>(initialEditingId ?? null);
+    const [viewMode, setViewMode] = useState<"list" | "detail">(initialEditingId ? "detail" : "list");
+
+    // 深链编辑目标变化时同步（同一页面连续两次导航时组件不会重挂载）
+    useEffect(() => {
+        if (initialEditingId) {
+            setEditingId(initialEditingId);
+            setViewMode("detail");
+        }
+    }, [initialEditingId]);
     const [editingPromptId, setEditingPromptId] = useState<string | null>(null);
     const [confirmExportId, setConfirmExportId] = useState<string | null>(null);
     const [confirmResetId, setConfirmResetId] = useState<string | null>(null);
@@ -169,14 +177,20 @@ export function PresetManager({ isActive = true }: { isActive?: boolean } = {}) 
     const containerRef = useRef<HTMLDivElement>(null);
     useEffect(() => {
         if (viewMode === "detail" && editingId) {
-            setOverrideBack(() => () => setViewMode("list"));
+            setOverrideBack(() => () => {
+                if (onExitToReturnApp) {
+                    onExitToReturnApp();
+                } else {
+                    setViewMode("list");
+                }
+            });
             const target = presets.find(p => p.id === editingId);
             setSubpageTitle(target?.name || "预设详情");
         } else {
             setOverrideBack(null);
             setSubpageTitle(null);
         }
-    }, [viewMode, editingId, presets, setOverrideBack, setSubpageTitle]);
+    }, [viewMode, editingId, presets, setOverrideBack, setSubpageTitle, onExitToReturnApp]);
 
     useEffect(() => {
         // Reset scroll only when changing view/preset, not on every field edit.
@@ -503,11 +517,12 @@ export function PresetManager({ isActive = true }: { isActive?: boolean } = {}) 
     const swipe = useSwipeActions();
 
     const insertPromptAfter = (preset: PresetConfig, afterIdentifier: string) => {
-        const newPrompt = {
+        const newPrompt: Prompt = {
             identifier: `prompt-${Date.now()}`,
             name: "新提示词",
             role: "system" as const,
             content: "",
+            injection_position: 0,
             injection_depth: 0,
             enabled: true,
         };

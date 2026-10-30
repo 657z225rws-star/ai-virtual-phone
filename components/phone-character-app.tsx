@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { Character } from "@/lib/character-types";
 import {
   createCharacter,
@@ -40,6 +40,7 @@ import { PageShell } from "@/components/ui/page-shell";
 import { ConfirmDialog } from "@/components/ui/modal";
 import { AlertCircle } from "lucide-react";
 import { notifyMascotPageContext } from "@/lib/mascot-events";
+import { takePendingCharacterNavigation } from "@/lib/pending-navigation";
 import { kvGet, kvSet } from "@/lib/kv-db";
 import { normalizeTimeZone } from "@/lib/character-time";
 
@@ -138,6 +139,50 @@ function getCharacterTimeZoneOptions(currentTimeZone = ""): string[] {
 
 export function PhoneCharacterApp({ onClose, onNotice }: PhoneCharacterAppProps) {
   const [view, setView] = useState<{ type: ViewType; id: string | null; isEditing?: boolean }>({ type: "list", id: null, isEditing: false });
+  const [returnAppOnExit, setReturnAppOnExit] = useState<string | null>(null);
+
+  useEffect(() => {
+    // Mount 后先领取事件可能已经先发出的深链（监听器未就位时事件会被丢弃）
+    const pending = takePendingCharacterNavigation();
+    if (pending?.characterId) {
+      setReturnAppOnExit(pending.returnApp ?? null);
+      setView({ type: "detail", id: pending.characterId, isEditing: pending.isEditing !== false });
+    } else if (pending?.returnApp) {
+      // 只进管理页（无具体角色 id）也记住来源，退出时回原 App
+      setReturnAppOnExit(pending.returnApp);
+    }
+    const onDirectEdit = (e: Event) => {
+      const { characterId, isEditing, returnApp } = (e as CustomEvent).detail ?? {};
+      if (characterId) {
+        takePendingCharacterNavigation(); // 事件已直接送达，清掉可能残留的 pending 副本
+        setReturnAppOnExit(returnApp ?? null);
+        setView({ type: "detail", id: characterId, isEditing: isEditing !== false });
+      }
+    };
+    window.addEventListener("character-navigate-edit", onDirectEdit);
+    return () => window.removeEventListener("character-navigate-edit", onDirectEdit);
+  }, []);
+
+  const handleExitToReturnApp = useCallback(() => {
+    if (returnAppOnExit) {
+      const targetApp = returnAppOnExit;
+      setReturnAppOnExit(null);
+      window.dispatchEvent(new CustomEvent("open-app", { detail: { appId: targetApp } }));
+    } else {
+      setView({ type: "list", id: null, isEditing: false });
+    }
+  }, [returnAppOnExit]);
+
+  // App 级退出闸门：从快捷浮窗深链进来时，退出角色 App 直接回原 App 而不是桌面
+  const requestCloseApp = useCallback(() => {
+    if (returnAppOnExit) {
+      const targetApp = returnAppOnExit;
+      setReturnAppOnExit(null);
+      window.dispatchEvent(new CustomEvent("open-app", { detail: { appId: targetApp } }));
+    } else {
+      onClose();
+    }
+  }, [returnAppOnExit, onClose]);
   const [characters, setCharacters] = useState<Character[]>(() => loadCharacters());
   const [bgItems, setBgItems] = useState<CanvasBgItem[]>(() => loadBackgroundItems());
   const [transition, setTransition] = useState<TransitionState | null>(null);
@@ -216,7 +261,7 @@ export function PhoneCharacterApp({ onClose, onNotice }: PhoneCharacterAppProps)
             onSelectWorld={selectWorldId}
             onUpdateChars={updateChars}
             onUpdateBgItems={updateBgItems}
-            onClose={onClose}
+            onClose={requestCloseApp}
             onSelect={handleSelectChar}
             onCreate={(style: number) => { setPendingPolaroidStyle(style); setView({ type: "detail", id: null, isEditing: true }); }}
             pendingPlacementChar={pendingPlacementChar}
@@ -239,10 +284,18 @@ export function PhoneCharacterApp({ onClose, onNotice }: PhoneCharacterAppProps)
           <CharArchiveView
             char={view.id ? (characters.find((c) => c.id === view.id) ?? createCharacter({ name: "", persona: "", avatar: null })) : createCharacter({ name: "", persona: "", avatar: null })}
             isEditing={view.isEditing}
-            onBack={handleBackFromDetail}
+            onBack={() => {
+              if (returnAppOnExit) {
+                handleExitToReturnApp();
+              } else {
+                handleBackFromDetail();
+              }
+            }}
             onEdit={() => setView({ type: "detail", id: view.id, isEditing: true })}
             onCancelEdit={() => {
-              if (view.id) {
+              if (returnAppOnExit) {
+                handleExitToReturnApp();
+              } else if (view.id) {
                 setView({ type: "detail", id: view.id, isEditing: false });
               } else {
                 setView({ type: "list", id: null, isEditing: false });

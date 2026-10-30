@@ -18,10 +18,10 @@ import { SwipeActionRow, useSwipeActions } from "@/components/ui/swipe-actions";
 import { notifyMascotPageContext } from "@/lib/mascot-events";
 import { useGridTouchSort } from "@/lib/use-grid-touch-sort";
 
-export function WorldBookManager({ isActive = true }: { isActive?: boolean } = {}) {
+export function WorldBookManager({ isActive = true, initialActiveBookId, onExitToReturnApp }: { isActive?: boolean; initialActiveBookId?: string | null; onExitToReturnApp?: () => void } = {}) {
     const [books, setBooks] = useState<WorldBookConfig[]>([]);
-    const [activeBookId, setActiveBookId] = useState<string>("");
-    const [viewMode, setViewMode] = useState<"list" | "detail">("list");
+    const [activeBookId, setActiveBookId] = useState<string>(initialActiveBookId || "");
+    const [viewMode, setViewMode] = useState<"list" | "detail">(initialActiveBookId ? "detail" : "list");
     const [editingUid, setEditingUid] = useState<string | null>(null);
     const [confirmDeleteTarget, setConfirmDeleteTarget] = useState<{ type: 'book' | 'entry', id: string } | null>(null);
     const [isLoaded, setIsLoaded] = useState(false);
@@ -35,12 +35,21 @@ export function WorldBookManager({ isActive = true }: { isActive?: boolean } = {
     // Initial load
     useEffect(() => {
         const loaded = loadWorldBooks();
-        if (loaded.length > 0) {
-            setBooks(loaded);
+        setBooks(loaded);
+        // 深链指定了某本书时保留该 id，不要被默认第一本覆盖
+        if (!initialActiveBookId || !loaded.some(b => b.id === initialActiveBookId)) {
             setActiveBookId(loaded[0]?.id || "");
         }
         setIsLoaded(true);
     }, []);
+
+    // 深链目标变化时同步（同一页面连续两次导航时组件不会重挂载）
+    useEffect(() => {
+        if (initialActiveBookId) {
+            setActiveBookId(initialActiveBookId);
+            setViewMode("detail");
+        }
+    }, [initialActiveBookId]);
 
     const persist = useCallback((newBooks: WorldBookConfig[]) => {
         setBooks(newBooks);
@@ -50,14 +59,20 @@ export function WorldBookManager({ isActive = true }: { isActive?: boolean } = {
     const wbContainerRef = useRef<HTMLDivElement>(null);
     useEffect(() => {
         if (viewMode === "detail" && activeBookId) {
-            setOverrideBack(() => () => setViewMode("list"));
+            setOverrideBack(() => () => {
+                if (onExitToReturnApp) {
+                    onExitToReturnApp();
+                } else {
+                    setViewMode("list");
+                }
+            });
             const target = books.find(b => b.id === activeBookId);
             setSubpageTitle(target?.name || "世界书详情");
         } else {
             setOverrideBack(null);
             setSubpageTitle(null);
         }
-    }, [viewMode, activeBookId, books, setOverrideBack, setSubpageTitle]);
+    }, [viewMode, activeBookId, books, setOverrideBack, setSubpageTitle, onExitToReturnApp]);
 
     useEffect(() => {
         const scrollParent = wbContainerRef.current?.closest(".page-body");

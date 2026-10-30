@@ -24,6 +24,7 @@ import { ModerationCenter } from "./settings/moderation-center";
 import { fetchIsAdmin } from "@/lib/moderation-client";
 import { isSelfHostedModeEnabled } from "@/lib/self-hosting";
 import { PageShell } from "./ui/page-shell";
+import { takePendingSettingsNavigation } from "@/lib/pending-navigation";
 import { CardGrid, FeaturedCard, type CardItem, type FeaturedCardItem } from "./ui/card-grid";
 import { Toggle } from "./ui/form";
 import { loadChatAppSettings, saveChatAppSettings } from "@/lib/chat-storage";
@@ -107,6 +108,8 @@ export function PhoneSettingsApp({ onClose, onNotice }: SettingsPageProps) {
     const [subpageTitle, setSubpageTitle] = useState<string | null>(null);
     const [subpageRightActions, setSubpageRightActions] = useState<Record<string, ReactNode>>({});
     const [overrideBack, setOverrideBack] = useState<(() => void) | null>(null);
+    const [targetEditingId, setTargetEditingId] = useState<string | null>(null);
+    const [returnAppOnExit, setReturnAppOnExit] = useState<string | null>(null);
     const [timeAware, setTimeAware] = useState(true);
     const [weatherAware, setWeatherAware] = useState(true);
     const [weatherLocateHint, setWeatherLocateHint] = useState<string | null>(null);
@@ -196,6 +199,9 @@ export function PhoneSettingsApp({ onClose, onNotice }: SettingsPageProps) {
     const handleBack = () => {
         if (overrideBack) {
             overrideBack();
+        } else if (returnAppOnExit) {
+            // 从快捷浮窗深链进入：顶栏返回直接回原 App，而不是落在设置页
+            handleExitDirectEdit();
         } else if (currentPage !== "main") {
             setCurrentPage("main");
             setSubpageTitle(null);
@@ -211,7 +217,12 @@ export function PhoneSettingsApp({ onClose, onNotice }: SettingsPageProps) {
         label: item.label,
         desc: item.desc,
         iconColor: item.iconColor,
-        onClick: () => setCurrentPage(item.id as SubPage),
+        onClick: () => {
+            // 手动导航会脱离深链上下文，清掉返回原 App 的残留
+            setReturnAppOnExit(null);
+            setTargetEditingId(null);
+            setCurrentPage(item.id as SubPage);
+        },
     });
 
     const handleTimeAwareChange = useCallback((next: boolean) => {
@@ -289,7 +300,11 @@ export function PhoneSettingsApp({ onClose, onNotice }: SettingsPageProps) {
         label: imageGenerationItem.label,
         desc: imageGenerationItem.desc,
         iconColor: imageGenerationItem.iconColor,
-        onClick: () => setCurrentPage("imageGeneration"),
+        onClick: () => {
+            setReturnAppOnExit(null);
+            setTargetEditingId(null);
+            setCurrentPage("imageGeneration");
+        },
     };
 
     const bindingItem = SETTINGS_MENU.find(i => i.id === "binding")!;
@@ -299,13 +314,17 @@ export function PhoneSettingsApp({ onClose, onNotice }: SettingsPageProps) {
         label: bindingItem.label,
         desc: bindingItem.desc,
         iconColor: bindingItem.iconColor,
-        onClick: () => setCurrentPage("binding"),
+        onClick: () => {
+            setReturnAppOnExit(null);
+            setTargetEditingId(null);
+            setCurrentPage("binding");
+        },
     };
 
     const renderSubPage = () => {
         switch (currentPage) {
             case "api":
-                return <ApiSettings />;
+                return <ApiSettings initialEditingId={targetEditingId} onExitToReturnApp={returnAppOnExit ? handleExitDirectEdit : undefined} />;
             case "voice":
                 return <VoiceSettings />;
             case "proactiveApi":
@@ -313,9 +332,9 @@ export function PhoneSettingsApp({ onClose, onNotice }: SettingsPageProps) {
             case "imageGeneration":
                 return <ImageGenerationSettings />;
             case "presets":
-                return <PresetManager isActive />;
+                return <PresetManager isActive initialEditingId={targetEditingId} onExitToReturnApp={returnAppOnExit ? handleExitDirectEdit : undefined} />;
             case "worldbook":
-                return <WorldBookManager isActive />;
+                return <WorldBookManager isActive initialActiveBookId={targetEditingId} onExitToReturnApp={returnAppOnExit ? handleExitDirectEdit : undefined} />;
             case "regex":
                 return <RegexManager isActive />;
             case "data":
@@ -378,15 +397,39 @@ export function PhoneSettingsApp({ onClose, onNotice }: SettingsPageProps) {
         return () => window.removeEventListener("mascot-navigate-mode", onMode);
     }, []);
 
-    // Listen for internal settings tab navigation (e.g. mascot "修改绑定" button)
+    // Listen for internal settings tab navigation (e.g. mascot "修改绑定" button or quick-action deep link)
     useEffect(() => {
+        // Mount 后先领取事件可能已经先发出的深链（监听器未就位时事件会被丢弃）
+        const pending = takePendingSettingsNavigation();
+        if (pending?.page) {
+            setTargetEditingId(pending.editingId ?? null);
+            setReturnAppOnExit(pending.returnApp ?? null);
+            setCurrentPage(pending.page as SubPage);
+        }
         const onNav = (e: Event) => {
-            const { page } = (e as CustomEvent).detail ?? {};
-            if (page) setCurrentPage(page as SubPage);
+            const { page, editingId, returnApp } = (e as CustomEvent).detail ?? {};
+            if (page) {
+                takePendingSettingsNavigation(); // 事件已直接送达，清掉可能残留的 pending 副本
+                setTargetEditingId(editingId ?? null);
+                setReturnAppOnExit(returnApp ?? null);
+                setCurrentPage(page as SubPage);
+            }
         };
         window.addEventListener("settings-navigate", onNav);
         return () => window.removeEventListener("settings-navigate", onNav);
     }, []);
+
+    const handleExitDirectEdit = useCallback(() => {
+        if (returnAppOnExit) {
+            const targetApp = returnAppOnExit;
+            setReturnAppOnExit(null);
+            setTargetEditingId(null);
+            setSubpageTitle(null);
+            window.dispatchEvent(new CustomEvent("open-app", { detail: { appId: targetApp } }));
+        } else {
+            setCurrentPage("main");
+        }
+    }, [returnAppOnExit, setSubpageTitle]);
 
     return (
         <SettingsContext.Provider value={{ setSubpageTitle, setOverrideBack, setSubpageRightAction }}>
